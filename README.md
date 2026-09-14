@@ -19,7 +19,7 @@
 ### 2. セットアップする
 
 `tools/effect/effect_config.json` を開いて、**Effekseer のバージョン（`version`）と `Effekseer.exe` の場所（`cui_paths`）の 2 つだけ**を書きます。
-ほかの項目は変更しなくて使えます。
+ほかの項目は変更しなくても使えます。
 
 ```json
 "effekseer": {

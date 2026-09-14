@@ -34,9 +34,10 @@
 
 パスは `/` で区切ってください。
 
-このリポジトリのフォルダで、次の 2 つを実行して確認します。
+次の 2 つを実行して確認します。**先に `cd` でこのリポジトリのフォルダに移動してください**（`tools/` があるフォルダで実行しないと、`No module named tools.effect` のエラーになり確認できません）。
 
 ```
+cd EffekseerEfkprojTool
 python -m tools.effect check-env
 python -m tools.effect selftest
 ```
@@ -50,10 +51,9 @@ python -m tools.effect selftest
 ```
 docs/usage.md を読んで、赤い火花が飛び散るヒットエフェクトを
 work/HitSpark.efkproj に作って、コンパイルまでして。
-テクスチャは work/Texture/Particle01.png を使って。
 ```
 
-テクスチャ画像はこのツールに含まれていません。使う画像は自分で用意するかAIは自動的にテクスチャを用意します。
+テクスチャは AI が用意して設定するので、気にしなくてかまいません（使いたい画像があれば、その場所を伝えてください）。
 
 ### 4. 見た目を確認して、直してもらう
 

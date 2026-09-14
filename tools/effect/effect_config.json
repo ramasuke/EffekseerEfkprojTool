@@ -1,12 +1,13 @@
 {
     "effekseer": {
-        "cui_path": "",
-        "verified_version": "1.7.3.0"
+        "version": "",
+        "cui_paths": {}
     },
     "project": {
         "root": "",
         "effect_dir": "Effects",
-        "source_subdir": "_Source"
+        "source_subdir": "_Source",
+        "runtime_version": ""
     },
     "meta": {
         "enabled": false,

@@ -5,7 +5,9 @@ NanamiEngine stays the source of truth: edit here, export, then commit/push in
 the destination. ``MANIFEST`` is the single list of what ships; the
 project-specific ``effect_config.json`` is replaced by ``dist/effect_config.json``
 (no personal paths, ``.meta`` output off) and ``dist/`` also provides the
-repository's top-level README / LICENSE / .gitignore.
+repository's user documentation (README.md, docs/*.md), LICENSE and .gitignore.
+``tools/effect/README.md`` is this project's internal reference and is not
+shipped.
 """
 
 from __future__ import annotations
@@ -19,13 +21,15 @@ _DIST = "tools/effect/dist"
 # (path in the exported tree, source path relative to this project's root)
 MANIFEST: list[tuple[str, str]] = [
     ("README.md", f"{_DIST}/README.md"),
+    *[(f"docs/{n}.md", f"{_DIST}/docs/{n}.md") for n in (
+        "setup", "usage", "versions", "troubleshooting", "development",
+    )],
     ("LICENSE", f"{_DIST}/LICENSE"),
     (".gitignore", f"{_DIST}/.gitignore"),
     ("tools/effect.py", "tools/effect.py"),
     *[(f"tools/effect/{n}", f"tools/effect/{n}") for n in (
-        "__init__.py", "__main__.py", "assets.py", "cli.py", "config.py", "enums.py", "export.py",
-        "meta.py", "model.py", "presets.py", "selftest.py", "xmlio.py",
-        "README.md", "SETUP.md",
+        "__init__.py", "__main__.py", "assets.py", "cli.py", "config.py", "efkefc.py", "enums.py",
+        "export.py", "meta.py", "model.py", "presets.py", "selftest.py", "versions.py", "xmlio.py",
     )],
     ("tools/effect/effect_config.json", f"{_DIST}/effect_config.json"),
     *[(f"tools/effect/testdata/{n}.efkproj", f"tools/effect/testdata/{n}.efkproj") for n in (

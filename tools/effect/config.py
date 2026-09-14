@@ -1,12 +1,18 @@
 """``effect_config.json`` - every machine- or project-specific value the
 toolkit needs (Effekseer CUI location, install destination, ``.meta`` output),
 kept out of the code so the toolkit can be copied into another project and
-adapted by editing that one file. See ``SETUP.md`` for the key reference.
+adapted by editing that one file. See ``docs/setup.md`` (``tools/effect/dist/docs/setup.md`` here) for the
+key reference.
 
 Relative paths: ``project.root`` is relative to the config file's directory
-(empty = the folder that contains ``tools/``); ``effekseer.cui_path``,
-``project.effect_dir`` and ``selftest.corpus_dir`` are relative to the project
-root. An empty string means "not set".
+(empty = the folder that contains ``tools/``); ``effekseer.cui_paths`` /
+``effekseer.cui_path``, ``project.effect_dir`` and ``selftest.corpus_dir`` are
+relative to the project root. An empty string means "not set".
+
+``effekseer.version`` is the Effekseer version the toolkit targets and
+``effekseer.cui_paths`` maps versions to their ``Effekseer.exe`` (see
+``cli.resolve_effekseer`` for the lookup order). The older single
+``effekseer.cui_path`` and ``effekseer.verified_version`` keys still work.
 """
 
 from __future__ import annotations
@@ -16,11 +22,13 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import versions
+
 CONFIG_PATH = Path(__file__).with_name("effect_config.json")
 
 _DEFAULTS = {
-    "effekseer": {"cui_path": "", "verified_version": "1.7.3.0"},
-    "project": {"root": "", "effect_dir": "Effects", "source_subdir": "_Source"},
+    "effekseer": {"version": "", "cui_paths": {}, "cui_path": "", "verified_version": ""},
+    "project": {"root": "", "effect_dir": "Effects", "source_subdir": "_Source", "runtime_version": ""},
     "meta": {"enabled": False, "asset_type": "NanamiEngine::Module::Asset::ParticleFile"},
     "selftest": {"corpus_dir": ""},
 }
@@ -33,8 +41,10 @@ class ConfigError(RuntimeError):
 @dataclass(frozen=True)
 class EffectConfig:
     config_path: Path
+    version: str
+    cui_paths: dict[str, Path]
     cui_path: Path | None
-    verified_version: str
+    runtime_version: str
     project_root: Path
     effect_dir: Path
     effect_dir_rel: str
@@ -45,7 +55,7 @@ class EffectConfig:
 
 
 def _fail(path: Path, msg: str) -> ConfigError:
-    return ConfigError(f"{path}: {msg} (see tools/effect/SETUP.md)")
+    return ConfigError(f"{path}: {msg} (see docs/setup.md)")
 
 
 def _value(raw: dict, path: Path, section: str, key: str, typ: type):
@@ -79,12 +89,35 @@ def load(path: Path) -> EffectConfig:
     project_root = _under(path.parent, root_spec) if root_spec else path.resolve().parents[2]
 
     cui_spec = _value(raw, path, "effekseer", "cui_path", str)
+    cui_paths_spec = _value(raw, path, "effekseer", "cui_paths", dict)
+    for key, value in cui_paths_spec.items():
+        if not isinstance(value, str):
+            raise _fail(path, f'"effekseer.cui_paths.{key}" must be a str, got {value!r}')
+        try:
+            versions.profile_for(key)
+        except ValueError as e:
+            raise _fail(path, f'"effekseer.cui_paths" key {key!r}: {e}') from e
+    version = (_value(raw, path, "effekseer", "version", str)
+               or _value(raw, path, "effekseer", "verified_version", str))
+    if version:
+        try:
+            versions.profile_for(version)
+        except ValueError as e:
+            raise _fail(path, f'"effekseer.version": {e}') from e
+    runtime_version = _value(raw, path, "project", "runtime_version", str)
+    if runtime_version:
+        try:
+            versions.runtime_max_binary_version(runtime_version)
+        except ValueError as e:
+            raise _fail(path, f'"project.runtime_version": {e}') from e
     effect_dir_rel = _value(raw, path, "project", "effect_dir", str) or _DEFAULTS["project"]["effect_dir"]
     corpus_spec = _value(raw, path, "selftest", "corpus_dir", str)
     return EffectConfig(
         config_path=path.resolve(),
+        version=version,
+        cui_paths={k: _under(project_root, v) for k, v in cui_paths_spec.items() if v},
         cui_path=_under(project_root, cui_spec) if cui_spec else None,
-        verified_version=_value(raw, path, "effekseer", "verified_version", str),
+        runtime_version=runtime_version,
         project_root=project_root,
         effect_dir=_under(project_root, effect_dir_rel),
         effect_dir_rel=effect_dir_rel.replace("\\", "/"),

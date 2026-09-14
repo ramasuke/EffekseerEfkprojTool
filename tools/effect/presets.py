@@ -231,19 +231,47 @@ def axis_easing(*, axis: Elem, start: dict | None = None, end: dict | None = Non
 
 # ---------------------------------------------------------------------------
 # common Node child-block builders
-def common_values(*, max_generation=None, infinite: bool | None = None,
+COMMON_LAYOUTS = ("legacy", "v180")
+
+
+def common_values(*, layout: str, max_generation=None, infinite: bool | None = None,
                    location_effect_type: int | None = None,
                    rotation_effect_type: int | None = None,
                    scale_effect_type: int | None = None,
                    generation_time=None, generation_time_offset=None,
                    life=None, remove_when_life_extinct: bool | None = None,
                    remove_when_parent_removed: bool | None = None,
-                   remove_when_all_children_removed: bool | None = None) -> Elem:
+                   remove_when_all_children_removed: bool | None = None,
+                   trigger_to_start: int | None = None, trigger_to_stop: int | None = None,
+                   trigger_to_remove: int | None = None,
+                   generation_timing: int | None = None, trigger: int | None = None,
+                   trigger_count=None) -> Elem:
     """``CommonValues``. ``location_effect_type``/``rotation_effect_type``/
     ``scale_effect_type`` are the parent-transform-inheritance flags for
-    child nodes (0/1/2, real corpus mode is 1); order below matches a real
-    verbose sample (``NextSoft01/MagicFire1.efkproj``) byte-for-byte.
+    child nodes (0/1/2, real corpus mode is 1).
+
+    ``layout`` must match the target file's ``ToolVersion`` (see
+    ``versions.layout_of``), because Effekseer picks the layout from it:
+
+    * ``"legacy"`` (ToolVersion < 1.80β2): ``RemoveWhen*``, ``GenerationTime``/
+      ``GenerationTimeOffset`` and ``TriggerParam`` are direct children; order
+      matches a real verbose sample (``NextSoft01/MagicFire1.efkproj``) and
+      the 1.7.3 editor's own output. 1.80 migrates these on load.
+    * ``"v180"``: the same values live in ``<Generation>``/``<Removal>``
+      (1.80.7 ``Data/CommonValues.cs``, order as the 1.80.7 editor writes it),
+      which also carry the 1.80-only ``generation_timing`` (0=Continuous,
+      1=Trigger), ``trigger`` and ``trigger_count``.
+
+    ``trigger_*`` are Effekseer ``TriggerType`` values: 0=None,
+    1/257/513/769=Trigger0-3, and (1.80 only) 2=ParentRemoved,
+    3=ParentCollided. PVA-shaped values are ``{"center":..,"max":..,"min":..}``.
     """
+    if layout not in COMMON_LAYOUTS:
+        raise ValueError(f"layout={layout!r}; expected one of {COMMON_LAYOUTS}")
+    if layout == "legacy" and (generation_timing is not None or trigger is not None
+                               or trigger_count is not None):
+        raise ValueError("generation_timing/trigger/trigger_count only exist in Effekseer 1.80's "
+                         "CommonValues layout (a file with ToolVersion 1.80 or later)")
     e = Elem("CommonValues")
     if max_generation is not None or infinite is not None:
         mg = Elem("MaxGeneration")
@@ -258,6 +286,28 @@ def common_values(*, max_generation=None, infinite: bool | None = None,
         e.children.append(Elem("RotationEffectType", text=_fmt(rotation_effect_type)))
     if scale_effect_type is not None:
         e.children.append(Elem("ScaleEffectType", text=_fmt(scale_effect_type)))
+
+    if layout == "v180":
+        if life is not None:
+            e.children.append(pva("Life", **life))
+        generation = elem(
+            "Generation", Timing=generation_timing,
+            GenerationTime=pva("GenerationTime", **generation_time) if generation_time is not None else None,
+            GenerationTimeOffset=(pva("GenerationTimeOffset", **generation_time_offset)
+                                  if generation_time_offset is not None else None),
+            ToStartGeneration=trigger_to_start, ToStopGeneration=trigger_to_stop, Trigger=trigger,
+            TriggerCount=pva("TriggerCount", **trigger_count) if trigger_count is not None else None,
+        )
+        if generation.children:
+            e.children.append(generation)
+        removal = elem("Removal", WhenLifeIsExtinct=remove_when_life_extinct,
+                       WhenParentIsRemoved=remove_when_parent_removed,
+                       WhenAllChildrenAreRemoved=remove_when_all_children_removed,
+                       TriggerToRemove=trigger_to_remove)
+        if removal.children:
+            e.children.append(removal)
+        return e
+
     if remove_when_life_extinct is not None:
         e.children.append(Elem("RemoveWhenLifeIsExtinct", text=_fmt(remove_when_life_extinct)))
     if remove_when_parent_removed is not None:
@@ -270,6 +320,10 @@ def common_values(*, max_generation=None, infinite: bool | None = None,
         e.children.append(pva("GenerationTime", **generation_time))
     if generation_time_offset is not None:
         e.children.append(pva("GenerationTimeOffset", **generation_time_offset))
+    trigger_param = elem("TriggerParam", ToStartGeneration=trigger_to_start,
+                         ToStopGeneration=trigger_to_stop, ToRemove=trigger_to_remove)
+    if trigger_param.children:
+        e.children.append(trigger_param)
     return e
 
 
@@ -737,8 +791,13 @@ def node(name: str = "Node", *, common: Elem | None = None, location: Elem | Non
 
 
 def group_node(name: str = "Node", *, children: list[Elem] | None = None, **node_kwargs) -> Elem:
-    """A pure container node: no ``DrawingValues``, just organizes children."""
-    return node(name, children=children, **node_kwargs)
+    """A pure container node that draws nothing, just organizes children.
+    ``DrawingValues/Type`` is written as 0 (None) explicitly: a missing
+    ``Type`` - or a missing ``DrawingValues`` - is a *Sprite* in every
+    Effekseer 1.5x-1.80.x editor (verified with each family's CUI)."""
+    if "drawing" in node_kwargs:
+        raise ValueError("group_node() draws nothing; use node(drawing=...) for a drawing node")
+    return node(name, children=children, drawing=elem("DrawingValues", Type=0), **node_kwargs)
 
 
 def sprite_node(name: str = "Node", *, sprite_block: Elem, children: list[Elem] | None = None,
@@ -772,10 +831,12 @@ def new_project(*, start_frame: int = 0, end_frame: int = 60, is_loop: bool = Tr
     """Build a full ``<EffekseerProject>`` skeleton.
 
     Defaults (``tool_version``/``version``) match the real AndrewFM01 samples
-    this toolkit was built from; the local Effekseer 1.7.3.0 CUI compiles
-    them successfully regardless of the declared ``ToolVersion`` (verified
-    this session), so these are safe placeholders rather than a requirement
-    to match exactly.
+    this toolkit was built from. ``ToolVersion`` is not a placeholder: it
+    decides the ``CommonValues`` layout Effekseer reads (see
+    :func:`common_values`) and an editor refuses a newer one than itself, so
+    ``new-project`` passes the target version's
+    ``versions.Profile.new_project_tool_version`` (``"0.7CTP1"`` for 1.7,
+    loaded by every editor; ``"1.80"`` for 1.80).
     """
     root = Elem("Root")
     root.children.append(Elem("Name", text="Root"))

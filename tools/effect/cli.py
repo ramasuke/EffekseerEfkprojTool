@@ -1,5 +1,5 @@
 """CLI subcommands for tools.effect: new-project, show, validate, add-node,
-set-params, apply, compile, install, check-env, export.
+set-params, apply, compile, upgrade, install, check-env, export.
 
 Nodes have no stable id in the ``.efkproj`` format (unlike ``tools/bt``'s
 per-node GUIDs), so ``--parent``/``--path`` address a node by a dot-separated
@@ -14,18 +14,19 @@ import argparse
 import filecmp
 import json
 import os
-import re
 import shutil
-import struct
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 from . import assets
 from . import config
+from . import efkefc
 from . import enums
 from . import meta as meta_mod
 from . import presets as p
+from . import versions
 from . import xmlio
 from .model import Elem
 
@@ -126,14 +127,92 @@ def _warn_missing_assets_in(node: Elem, proj_path: Path) -> None:
               file=sys.stderr)
 
 
-def _reject_enum_violations(node: Elem, label: str) -> None:
-    """Refuse to write a node carrying an Effekseer enum value the editor
-    would crash on (see ``enums.py``). Catches the ``--set``/``"set"`` escape
-    hatch, which can otherwise put any int into an enum-typed leaf."""
-    problems = enums.check_node(node)
+# ---------------------------------------------------------------------------
+# which Effekseer: target version (-> versions.Profile) and its CUI
+@dataclass(frozen=True)
+class Effekseer:
+    version: str
+    version_source: str
+    profile: versions.Profile
+    cui: Path | None          # as configured (a 1.80 launcher is resolved when run)
+    cui_source: str | None
+    detected: str | None      # version read from the CUI's EffekseerCore.dll
+
+    @property
+    def editor_version(self) -> str:
+        """The editor that will actually load files: the CUI's, when known."""
+        return self.detected or self.version
+
+
+def version_candidates(version_arg: str | None) -> list[tuple[str, str | None]]:
+    cfg = config.get()
+    return [
+        ("--effekseer-version", version_arg),
+        ("$EFFEKSEER_VERSION", os.environ.get("EFFEKSEER_VERSION")),
+        (f"effekseer.version in {cfg.config_path.name}", cfg.version or None),
+    ]
+
+
+def cui_candidates(cui_path_arg: str | None, version: str | None) -> list[tuple[str, str | None]]:
+    """``(source label, path)`` in lookup order: ``--cui-path``, ``$EFFEKSEER_CUI``,
+    ``effekseer.cui_paths`` (the entry for ``version``, then others of the same
+    version family; every entry when no version is set), then
+    ``effekseer.cui_path``."""
+    cfg = config.get()
+    out: list[tuple[str, str | None]] = [
+        ("--cui-path", cui_path_arg),
+        ("$EFFEKSEER_CUI", os.environ.get("EFFEKSEER_CUI")),
+    ]
+    entries = list(cfg.cui_paths.items())
+    if version:
+        entries = ([(k, v) for k, v in entries if k == version]
+                   + [(k, v) for k, v in entries if k != version and versions.same_family(k, version)])
+    out += [(f"effekseer.cui_paths[{k!r}] in {cfg.config_path.name}", str(v)) for k, v in entries]
+    out.append((f"effekseer.cui_path in {cfg.config_path.name}", str(cfg.cui_path) if cfg.cui_path else None))
+    return out
+
+
+def resolve_effekseer(cui_path_arg: str | None, version_arg: str | None) -> Effekseer:
+    """Target version: ``--effekseer-version``, ``$EFFEKSEER_VERSION``,
+    ``effekseer.version``; if none is set, the version of the CUI found, else
+    :data:`versions.FALLBACK_VERSION`. The CUI: see :func:`cui_candidates`."""
+    version, version_source = next(((v, label) for label, v in version_candidates(version_arg) if v),
+                                   (None, None))
+    cui, cui_source = next(((Path(c), label) for label, c in cui_candidates(cui_path_arg, version)
+                            if c and Path(c).is_file()), (None, None))
+    detected = versions.detect_cui_version(cui) if cui is not None else None
+    if version is None:
+        if detected:
+            version, version_source = detected, f"detected from {cui}"
+        else:
+            version, version_source = versions.FALLBACK_VERSION, "fallback (no version configured)"
+    try:
+        profile = versions.profile_for(version)
+    except ValueError as e:
+        raise CliError(f"{version_source}: {e}") from e
+    return Effekseer(version, version_source, profile, cui, cui_source, detected)
+
+
+def _cui_mismatch(eff: Effekseer) -> str | None:
+    if eff.cui is not None and eff.detected and not versions.same_family(eff.detected, eff.version):
+        return (f"the Effekseer CUI {eff.cui} ({eff.cui_source}) is Effekseer {eff.detected}, but the target "
+                f"version is {eff.version} ({eff.version_source}). Point effekseer.cui_paths[{eff.version!r}] "
+                "at that version's Effekseer.exe, or change the target version")
+    return None
+
+
+def _reject_write_problems(node: Elem, label: str, eff: Effekseer, tool_version: str) -> None:
+    """Refuse to write a node carrying an Effekseer enum value the target
+    editor would crash on (see ``enums.py``), or fields the file's
+    ``ToolVersion`` makes Effekseer drop or overwrite (``versions.MIGRATIONS``).
+    Catches the ``--set``/``"set"`` escape hatch, which can otherwise put
+    anything in."""
+    problems = enums.check_node(node, eff.profile) + versions.node_migration_problems(node, tool_version)
     if problems:
-        raise CliError(f"{label}: {len(problems)} Effekseer enum-domain violation(s), nothing written:\n  "
+        raise CliError(f"{label}: {len(problems)} problem(s) for Effekseer {eff.version}, nothing written:\n  "
                        + "\n  ".join(problems))
+    for msg in versions.node_unsupported_blocks(node, eff.profile):
+        print(f"WARNING: {label}: {msg}", file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -159,13 +238,13 @@ def resolve_node(project: Elem, path: str) -> Elem:
 
 
 def _drawing_kind(node: Elem) -> str | None:
-    dv = node.child("DrawingValues")
-    if dv is None:
+    """The node's drawing kind, ``None`` for a node that draws nothing
+    (``Type`` 0). A missing ``Type``/``DrawingValues`` is a Sprite."""
+    type_val = versions.drawing_type(node)
+    if type_val == 0:
         return None
-    t = dv.child("Type")
-    type_val = t.text if t is not None else "0"
     for kind, num in p.DRAWING_TYPE.items():
-        if str(num) == type_val:
+        if num == type_val:
             return kind
     return f"type={type_val}"
 
@@ -181,9 +260,11 @@ def cmd_new_project(args: argparse.Namespace) -> int:
         print(f"error: {out_path} already exists (use --force)", file=sys.stderr)
         return 1
 
-    proj = p.new_project(start_frame=args.start, end_frame=args.end, is_loop=args.loop)
+    proj = p.new_project(start_frame=args.start, end_frame=args.end, is_loop=args.loop,
+                         tool_version=versions.LEGACY_TOOL_VERSION)
     xmlio.write(out_path, proj)
-    print(f"created {out_path}")
+    print(f"created {out_path}  (ToolVersion {versions.LEGACY_TOOL_VERSION}: every Effekseer 1.5x-1.80.x "
+          "opens it and migrates the toolkit's fields; `upgrade` converts it to a newer native format)")
     return 0
 
 
@@ -191,7 +272,8 @@ def cmd_show(args: argparse.Namespace) -> int:
     proj = xmlio.read(_resolve(args.file))
     root = proj.require("Root")
     print(f"Root  (StartFrame={proj.child('StartFrame').text} "
-          f"EndFrame={proj.child('EndFrame').text} IsLoop={proj.child('IsLoop').text})")
+          f"EndFrame={proj.child('EndFrame').text} IsLoop={proj.child('IsLoop').text} "
+          f"ToolVersion={versions.tool_version_of(proj) or '(none)'}, {versions.layout_of(proj)} CommonValues)")
     kids = root.child("Children")
     if kids:
         _print_children(kids, 1, "")
@@ -214,6 +296,7 @@ def _print_children(children: Elem, depth: int, prefix: str) -> None:
 
 def cmd_validate(args: argparse.Namespace) -> int:
     path = _resolve(args.file)
+    eff = resolve_effekseer(None, args.effekseer_version)
     try:
         proj = xmlio.read(path)
     except Exception as e:  # noqa: BLE001
@@ -249,23 +332,45 @@ def cmd_validate(args: argparse.Namespace) -> int:
         problems.append(f"unsupported DrawingValues {k} (this toolkit only models "
                          f"{sorted(p.DRAWING_TYPE)}; this may still compile fine via the "
                          "CUI, it just wasn't built by this toolkit)")
-    problems.extend(enums.check_project(proj))
+    problems.extend(enums.check_project(proj, eff.profile))
+    problems.extend(versions.project_migration_problems(proj))
+    too_new = versions.too_new_problem(proj, eff.editor_version)
+    if too_new:
+        problems.append(too_new)
     problems.extend(f"referenced file not found relative to {path.name}: {rel}"
                     + ("  (points outside the folder - likely a path from another PC)" if assets.escapes(rel) else "")
                     for rel in assets.missing_project_assets(proj, path.parent))
 
+    for msg in versions.project_unsupported_blocks(proj, eff.profile):
+        print(f"WARNING: {msg}")
     if problems:
-        print(f"{len(problems)} problem(s) in {path.name}:")
+        print(f"{len(problems)} problem(s) in {path.name} (Effekseer {eff.version}):")
         for msg in problems:
             print(f"  - {msg}")
         return 1
-    print(f"OK  {path.name}  ({node_count} node(s))")
+    print(f"OK  {path.name}  ({node_count} node(s), Effekseer {eff.version}, "
+          f"{versions.layout_of(proj)} CommonValues)")
     return 0
 
 
 # ---------------------------------------------------------------------------
 # add-node: dedicated-flag -> presets kwargs (main/most-discoverable fields;
 # anything else stays reachable via --set dotted.path=value)
+_TRIGGER_NAMES = {"none": 0, "trigger0": 1, "trigger1": 257, "trigger2": 513, "trigger3": 769,
+                  "parent-removed": 2, "parent-collided": 3}
+
+
+def _parse_trigger(spec: str) -> int:
+    """A ``TriggerType``: a name from ``_TRIGGER_NAMES`` or its raw int."""
+    key = spec.strip().lower()
+    if key in _TRIGGER_NAMES:
+        return _TRIGGER_NAMES[key]
+    try:
+        return int(key)
+    except ValueError:
+        raise CliError(f"bad trigger {spec!r}: expected one of {sorted(_TRIGGER_NAMES)} or an int") from None
+
+
 def _common_kwargs_from_args(args: argparse.Namespace) -> dict:
     kwargs: dict = {}
     if args.life is not None:
@@ -274,6 +379,20 @@ def _common_kwargs_from_args(args: argparse.Namespace) -> dict:
         kwargs["max_generation"] = args.max_generation
     if args.infinite is not None:
         kwargs["infinite"] = args.infinite
+    if args.generation_time is not None:
+        kwargs["generation_time"] = _parse_pva(args.generation_time)
+    if args.generation_timing is not None:
+        kwargs["generation_timing"] = {"continuous": 0, "trigger": 1}[args.generation_timing]
+    if args.trigger is not None:
+        kwargs["trigger"] = _parse_trigger(args.trigger)
+    if args.trigger_count is not None:
+        kwargs["trigger_count"] = _parse_pva(args.trigger_count)
+    if args.trigger_to_start is not None:
+        kwargs["trigger_to_start"] = _parse_trigger(args.trigger_to_start)
+    if args.trigger_to_stop is not None:
+        kwargs["trigger_to_stop"] = _parse_trigger(args.trigger_to_stop)
+    if args.trigger_to_remove is not None:
+        kwargs["trigger_to_remove"] = _parse_trigger(args.trigger_to_remove)
     return kwargs
 
 
@@ -358,14 +477,21 @@ def _build_drawing(args: argparse.Namespace) -> Elem:
 
 def cmd_add_node(args: argparse.Namespace) -> int:
     path = _resolve(args.file)
+    eff = resolve_effekseer(None, args.effekseer_version)
     proj = xmlio.read(path)
+    layout = versions.layout_of(proj)
     parent = resolve_node(proj, args.parent)
     parent_children = parent.child_or_add("Children")
 
     node_kwargs: dict = {}
     common_kwargs = _common_kwargs_from_args(args)
     if common_kwargs:
-        node_kwargs["common"] = p.common_values(**common_kwargs)
+        try:
+            node_kwargs["common"] = p.common_values(layout=layout, **common_kwargs)
+        except ValueError as e:
+            raise CliError(f"add-node {args.name!r}: {e}; {path.name} has ToolVersion "
+                           f"{versions.tool_version_of(proj) or '(none)'}, nothing written (`upgrade "
+                           f"--effekseer-version 1.80.x` converts it)") from e
     renderer_kwargs = _renderer_kwargs_from_args(args)
     if renderer_kwargs:
         node_kwargs["renderer_common"] = p.renderer_common(**renderer_kwargs)
@@ -381,7 +507,7 @@ def cmd_add_node(args: argparse.Namespace) -> int:
     for assignment in args.set or []:
         key, _, value = assignment.partition("=")
         new_node.set_path(key, value)
-    _reject_enum_violations(new_node, f"add-node {args.name!r}")
+    _reject_write_problems(new_node, f"add-node {args.name!r}", eff, versions.tool_version_of(proj))
 
     parent_children.children.append(new_node)
     xmlio.write(path, proj)
@@ -394,12 +520,13 @@ def cmd_add_node(args: argparse.Namespace) -> int:
 
 def cmd_set_params(args: argparse.Namespace) -> int:
     path = _resolve(args.file)
+    eff = resolve_effekseer(None, args.effekseer_version)
     proj = xmlio.read(path)
     node = resolve_node(proj, args.path)
     for assignment in args.set or []:
         key, _, value = assignment.partition("=")
         node.set_path(key, value)
-    _reject_enum_violations(node, f"set-params [{args.path}]")
+    _reject_write_problems(node, f"set-params [{args.path}]", eff, versions.tool_version_of(proj))
     xmlio.write(path, proj)
     print(f"updated [{args.path}] ({len(args.set)} field(s))")
     _warn_missing_assets_in(node, path)
@@ -408,8 +535,10 @@ def cmd_set_params(args: argparse.Namespace) -> int:
 
 def cmd_apply(args: argparse.Namespace) -> int:
     path = _resolve(args.file)
+    eff = resolve_effekseer(None, args.effekseer_version)
     ops = json.loads(Path(args.ops).read_text(encoding="utf-8"))
     proj = xmlio.read(path)
+    tool_version = versions.tool_version_of(proj)
     for i, op in enumerate(ops):
         kind = op.get("op")
         if kind == "add-node":
@@ -430,13 +559,13 @@ def cmd_apply(args: argparse.Namespace) -> int:
                 raise CliError(f"op {i}: unknown kind {node_kind!r}")
             for key, value in (op.get("set") or {}).items():
                 new_node.set_path(key, str(value))
-            _reject_enum_violations(new_node, f"op {i} (add-node)")
+            _reject_write_problems(new_node, f"op {i} (add-node)", eff, tool_version)
             parent_children.children.append(new_node)
         elif kind == "set-params":
             node = resolve_node(proj, op["path"])
             for key, value in (op.get("set") or {}).items():
                 node.set_path(key, str(value))
-            _reject_enum_violations(node, f"op {i} (set-params [{op['path']}])")
+            _reject_write_problems(node, f"op {i} (set-params [{op['path']}])", eff, tool_version)
         else:
             raise CliError(f"op {i}: unknown op {kind!r}")
     xmlio.write(path, proj)
@@ -446,94 +575,62 @@ def cmd_apply(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
-# compiled .efkefc introspection
-_ASSET_EXT_RE = re.compile(r"[^\x00]+?\.(?:" + "|".join(assets.ASSET_EXTS) + ")", re.IGNORECASE)
+# compiled .efkefc introspection (see efkefc.py)
+def _read_efkefc(path: Path) -> bytes:
+    data = Path(path).read_bytes()
+    try:
+        efkefc.read_chunks(data)
+    except efkefc.EfkefcError as e:
+        raise CliError(f"{path} does not look like a .efkefc ({e})") from e
+    return data
 
 
 def efkefc_asset_paths(path: Path) -> list[str]:
-    """Every asset path (textures, models, materials, sounds) a compiled
-    ``.efkefc`` references, read from its ``INFO`` chunk - the list the
-    runtime resolves *relative to the .efkefc's own directory* when the effect
-    is loaded (``Effect::GetColorImagePath()`` etc.). Order is the chunk's.
-
-    The chunk is ``int32 version`` followed by string lists, each ``int32
-    count`` then ``count`` x (``int32 length`` + UTF-16LE chars incl. NUL);
-    parsed that way when it reads cleanly to the end, else falls back to
-    scanning the UTF-16 text for asset-looking paths (so an unfamiliar chunk
-    layout degrades to a best-effort list rather than an error).
-    """
-    raw = Path(path).read_bytes()
-    i = raw.find(b"INFO")
-    if not raw.startswith(b"EFKE") or i < 0:
-        raise CliError(f"{path} does not look like a .efkefc (no EFKE/INFO header)")
-    size = struct.unpack_from("<i", raw, i + 4)[0]
-    chunk = raw[i + 8:i + 8 + size]
-
-    paths: list[str] = []
-    off = 4  # skip version
+    """Every asset path a compiled ``.efkefc`` references (its ``INFO``
+    chunk) - the list the runtime resolves *relative to the .efkefc's own
+    directory* when the effect is loaded."""
     try:
-        while off < len(chunk):
-            count = struct.unpack_from("<i", chunk, off)[0]
-            off += 4
-            if not 0 <= count <= 4096:
-                raise ValueError("implausible list count")
-            for _ in range(count):
-                n = struct.unpack_from("<i", chunk, off)[0]
-                off += 4
-                if not 0 <= n <= 4096 or off + n * 2 > len(chunk):
-                    raise ValueError("implausible string length")
-                paths.append(chunk[off:off + n * 2].decode("utf-16-le").rstrip("\x00"))
-                off += n * 2
-        return paths
-    except (ValueError, struct.error):
-        text = chunk[4:].decode("utf-16-le", errors="ignore")
-        return [m.group(0).strip() for m in _ASSET_EXT_RE.finditer(text)]
+        return efkefc.asset_paths(_read_efkefc(path))
+    except efkefc.EfkefcError as e:
+        raise CliError(f"{path}: {e}") from e
 
 
-def _warn_missing_assets(efkefc: Path) -> list[str]:
+def _effect_binary_version(path: Path) -> int:
+    data = _read_efkefc(path)
+    try:
+        return efkefc.bin_version(data)
+    except efkefc.EfkefcError:
+        return efkefc.info_version(data)
+
+
+def _warn_missing_assets(efkefc_path: Path) -> list[str]:
     """Print a warning per referenced asset that is not present next to
-    ``efkefc`` (the runtime would then render that node untextured / skip the
-    model); returns the missing relative paths."""
-    missing = [rel for rel in efkefc_asset_paths(efkefc)
-               if rel and not (efkefc.parent / rel).exists()]
+    ``efkefc_path`` (the runtime would then render that node untextured / skip
+    the model); returns the missing relative paths."""
+    missing = [rel for rel in efkefc_asset_paths(efkefc_path)
+               if rel and not (efkefc_path.parent / rel).exists()]
     if missing:
-        print(f"WARNING: {efkefc.name} references {len(missing)} asset(s) that do not exist "
-              f"next to it (copy them under {efkefc.parent} or the effect renders without them):",
+        print(f"WARNING: {efkefc_path.name} references {len(missing)} asset(s) that do not exist "
+              f"next to it (copy them under {efkefc_path.parent} or the effect renders without them):",
               file=sys.stderr)
         for rel in missing:
             print(f"  - {rel}", file=sys.stderr)
     return missing
 
 
-def cui_candidates(cui_path_arg: str | None) -> list[tuple[str, str | None]]:
-    """``(source label, path)`` in lookup order: ``--cui-path``, ``$EFFEKSEER_CUI``,
-    then ``effekseer.cui_path`` in ``effect_config.json``."""
-    cfg = config.get()
-    return [
-        ("--cui-path", cui_path_arg),
-        ("$EFFEKSEER_CUI", os.environ.get("EFFEKSEER_CUI")),
-        (f"effekseer.cui_path in {cfg.config_path}", str(cfg.cui_path) if cfg.cui_path else None),
-    ]
-
-
-def find_cui(cui_path_arg: str | None) -> Path | None:
-    for _, candidate in cui_candidates(cui_path_arg):
-        if candidate and Path(candidate).is_file():
-            return Path(candidate)
-    return None
-
-
-def _find_cui_path(args: argparse.Namespace) -> Path:
-    cui = find_cui(args.cui_path)
-    if cui is not None:
-        return cui
-    tried = "\n  ".join(f"{label}: {value or '(not set)'}" for label, value in cui_candidates(args.cui_path))
-    raise CliError(
-        f"Effekseer CUI (Tool/Effekseer.exe) not found. Tried:\n  {tried}\n"
-        "Set effekseer.cui_path in tools/effect/effect_config.json to your Effekseer.exe "
-        f"(this toolkit is verified with Effekseer {config.get().verified_version}; "
-        "see tools/effect/SETUP.md)."
-    )
+def _require_cui(eff: Effekseer, cui_path_arg: str | None) -> Path:
+    if eff.cui is None:
+        tried = "\n  ".join(f"{label}: {value or '(not set)'}"
+                            for label, value in cui_candidates(cui_path_arg, eff.version))
+        raise CliError(
+            f"Effekseer {eff.version} CUI (Tool/Effekseer.exe) not found. Tried:\n  {tried}\n"
+            f"Set effekseer.cui_paths[{eff.version!r}] in tools/effect/effect_config.json to that version's "
+            "Effekseer.exe (see docs/setup.md)."
+        )
+    mismatch = _cui_mismatch(eff)
+    if mismatch:
+        raise CliError(mismatch)
+    return eff.cui
 
 
 def cmd_compile(args: argparse.Namespace) -> int:
@@ -548,32 +645,88 @@ def cmd_compile(args: argparse.Namespace) -> int:
                        "effect's texture/model paths relative to the output folder, so they would "
                        "point outside it. Compile next to the .efkproj and use `install --dest` to "
                        "ship it.")
-    missing = assets.missing_project_assets(_read_project(in_path), in_path.parent)
+    eff, _proj = _preflight_cui(in_path, args, "compiled")
+    written = _run_cui(eff, in_path, out_path)
+    print(f"compiled {out_path}  (Effekseer {eff.editor_version}, binary version {written})")
+    _warn_missing_assets(out_path)
+    return 0
+
+
+def _preflight_cui(in_path: Path, args: argparse.Namespace, verb: str) -> tuple[Effekseer, Elem]:
+    """Everything ``compile``/``upgrade`` refuse before running the CUI (which
+    itself accepts all of it without an error)."""
+    proj = _read_project(in_path)
+    missing = assets.missing_project_assets(proj, in_path.parent)
     if missing:
         raise CliError(f"{in_path.name} references {len(missing)} texture/model/sound file(s) that "
-                       f"don't exist relative to {in_path.parent}; nothing compiled (the CUI would "
-                       f"compile it anyway and the effect would render without them):\n"
+                       f"don't exist relative to {in_path.parent}; nothing {verb} (the CUI would "
+                       f"accept it anyway and the effect would render without them):\n"
                        + assets.describe_missing(missing))
-    cui = _find_cui_path(args)
+    eff = resolve_effekseer(args.cui_path, args.effekseer_version)
+    _require_cui(eff, args.cui_path)
+    blockers = versions.project_migration_problems(proj)
+    too_new = versions.too_new_problem(proj, eff.editor_version)
+    if too_new:
+        blockers.append(too_new)
+    if blockers:
+        raise CliError(f"{in_path.name}: {len(blockers)} problem(s) for Effekseer {eff.version}; nothing "
+                       f"{verb} (the CUI would drop these values or refuse the file without an error):\n  "
+                       + "\n  ".join(blockers))
+    return eff, proj
 
+
+def _run_cui(eff: Effekseer, in_path: Path, out_path: Path) -> int:
+    """Run the CUI ``-in in_path -o out_path``; returns the output's binary
+    version after checking it is the one ``eff`` writes."""
+    if out_path.exists():
+        out_path.unlink()
     result = subprocess.run(
-        [str(cui), "-cui", "-in", str(in_path), "-o", str(out_path)],
+        [str(versions.resolve_cui_exe(eff.cui)), "-cui", "-in", str(in_path.resolve()), "-o", str(out_path.resolve())],
         capture_output=True, text=True,
     )
     if result.returncode != 0:
-        print(f"CUI exited {result.returncode}", file=sys.stderr)
-        print(result.stdout, file=sys.stderr)
-        print(result.stderr, file=sys.stderr)
-        return 1
+        hint = ("" if (result.stdout + result.stderr).strip() else
+                " with no output - Effekseer CUIs intermittently do that while another Effekseer "
+                "process is running; retry once nothing else is running")
+        raise CliError(f"CUI exited {result.returncode}{hint}:\n{result.stdout}\n{result.stderr}")
     if not out_path.exists():
-        print(f"CUI exited 0 but {out_path} was not created", file=sys.stderr)
-        return 1
-    header = out_path.read_bytes()[:16]
-    if not header.startswith(b"EFKE") or b"INFO" not in header:
-        print(f"{out_path} does not look like a valid .efkefc (header {header!r})", file=sys.stderr)
-        return 1
-    print(f"compiled {out_path}")
-    _warn_missing_assets(out_path)
+        raise CliError(f"CUI exited 0 but {out_path} was not created. Its output:\n{result.stdout}\n{result.stderr}")
+    try:
+        written = efkefc.info_version(out_path.read_bytes())
+    except efkefc.EfkefcError as e:
+        raise CliError(f"{out_path} does not look like a valid .efkefc ({e})") from e
+    if written != eff.profile.binary_version:
+        raise CliError(f"{out_path} has binary version {written}, but Effekseer {eff.version} writes "
+                       f"{eff.profile.binary_version}: the CUI {eff.cui} is not Effekseer {eff.version}")
+    return written
+
+
+def cmd_upgrade(args: argparse.Namespace) -> int:
+    """Rewrite an ``.efkproj`` in the target editor's native format by letting
+    that editor migrate it: compile to a scratch ``.efkefc`` next to it and
+    keep the project XML the CUI stores in its ``EDIT`` chunk."""
+    in_path = _resolve(args.file)
+    out_path = _resolve(args.out) if args.out else in_path
+    if out_path.resolve().parent != in_path.resolve().parent:
+        raise CliError(f"--out must be in the same folder as {in_path.name}: the upgraded project's "
+                       "texture/model paths are relative to that folder")
+    eff, proj = _preflight_cui(in_path, args, "upgraded")
+    scratch = in_path.with_name(f".{in_path.stem}.upgrade.efkefc")
+    try:
+        _run_cui(eff, in_path, scratch)
+        upgraded = efkefc.edit_project(scratch.read_bytes())
+    except efkefc.EfkefcError as e:
+        raise CliError(f"could not read the migrated project back from {scratch.name}: {e}") from e
+    finally:
+        if scratch.exists():
+            scratch.unlink()
+    problems = enums.check_project(upgraded, eff.profile) + versions.project_migration_problems(upgraded)
+    if problems:
+        raise CliError(f"the migrated project fails the toolkit's checks, nothing written:\n  " + "\n  ".join(problems))
+    xmlio.write(out_path, upgraded)
+    print(f"upgraded {in_path.name} -> {out_path}  (ToolVersion {versions.tool_version_of(proj) or '(none)'} -> "
+          f"{versions.tool_version_of(upgraded)}, migrated by Effekseer {eff.editor_version} itself; "
+          f"{versions.layout_of(upgraded)} CommonValues)")
     return 0
 
 
@@ -641,6 +794,14 @@ def cmd_install(args: argparse.Namespace) -> int:
     except ValueError:
         dest_rel = Path(dest.name)
 
+    if cfg.runtime_version:
+        binary = _effect_binary_version(efkefc_src)
+        limit = versions.runtime_max_binary_version(cfg.runtime_version)
+        if binary > limit:
+            raise CliError(f"{efkefc_src.name} has binary version {binary} (Effekseer "
+                           f"{versions.binary_version_label(binary)}), but project.runtime_version is "
+                           f"{cfg.runtime_version!r}, whose runtime refuses anything above {limit}; nothing "
+                           "installed. Compile it with that Effekseer version instead.")
     copies = _plan_asset_copies(efkefc_src, dest)
     project = None
     if args.project:
@@ -696,31 +857,52 @@ def cmd_install(args: argparse.Namespace) -> int:
 
 def cmd_check_env(args: argparse.Namespace) -> int:
     cfg = config.get()
-    cui = find_cui(args.cui_path)
+    eff = resolve_effekseer(args.cui_path, args.effekseer_version)
 
     def exists(path: Path | None) -> str:
         if path is None:
             return "(not set)"
         return f"{path}  [{'found' if path.exists() else 'NOT FOUND'}]"
 
-    print(f"config:           {cfg.config_path}")
-    print(f"project root:     {exists(cfg.project_root)}")
-    print(f"Effekseer CUI:    {exists(cui) if cui else '(not found)'}")
-    for label, value in cui_candidates(args.cui_path):
+    print(f"config:            {cfg.config_path}")
+    print(f"project root:      {exists(cfg.project_root)}")
+    print(f"target version:    Effekseer {eff.version}  ({eff.version_source})")
+    for label, value in version_candidates(args.effekseer_version):
         print(f"  - {label}: {value or '(not set)'}")
-    print(f"verified version: Effekseer {cfg.verified_version}")
-    print(f"effect dir:       {exists(cfg.effect_dir)}")
-    print(f"source subdir:    {cfg.source_subdir}")
-    print(f".meta output:     {'on (' + cfg.meta_asset_type + ')' if cfg.meta_enabled else 'off'}")
+    print(f"  -> Effekseer {eff.profile.family} enum domains, compiled binary version {eff.profile.binary_version}")
+    print(f"Effekseer CUI:     {exists(eff.cui) if eff.cui else '(not found)'}"
+          + (f"  ({eff.cui_source})" if eff.cui else ""))
+    for label, value in cui_candidates(args.cui_path, eff.version):
+        print(f"  - {label}: {value or '(not set)'}")
+    if eff.cui is not None:
+        print(f"  -> runs {versions.resolve_cui_exe(eff.cui)}")
+        print(f"  -> CUI version: {eff.detected or '(could not detect)'}")
+    print(f"effect dir:        {exists(cfg.effect_dir)}")
+    print(f"source subdir:     {cfg.source_subdir}")
+    print(f"runtime version:   " + (f"{cfg.runtime_version} (install refuses binary versions above "
+                                    f"{versions.runtime_max_binary_version(cfg.runtime_version)})"
+                                    if cfg.runtime_version else "(not set; install doesn't check)"))
+    print(f".meta output:      {'on (' + cfg.meta_asset_type + ')' if cfg.meta_enabled else 'off'}")
     corpus = os.environ.get("EFFEKSEER_CORPUS")
-    print(f"selftest corpus:  {exists(Path(corpus) if corpus else cfg.corpus_dir)}")
+    print(f"selftest corpus:   {exists(Path(corpus) if corpus else cfg.corpus_dir)}")
 
-    if cui is None:
-        print("\nerror: Effekseer CUI not found - set effekseer.cui_path in "
-              f"{cfg.config_path.name} to your Effekseer.exe (see tools/effect/SETUP.md)", file=sys.stderr)
+    if eff.cui is None:
+        print(f"\nerror: Effekseer {eff.version} CUI not found - set effekseer.cui_paths[{eff.version!r}] in "
+              f"{cfg.config_path.name} to its Effekseer.exe (see docs/setup.md)", file=sys.stderr)
         return 1
-    print(f"\nOK. Using an Effekseer version other than {cfg.verified_version} may cause errors "
-          "when the generated effects are loaded (see tools/effect/SETUP.md).")
+    mismatch = _cui_mismatch(eff)
+    if mismatch:
+        print(f"\nerror: {mismatch}", file=sys.stderr)
+        return 1
+    if cfg.runtime_version and eff.profile.binary_version > versions.runtime_max_binary_version(cfg.runtime_version):
+        print(f"\nWARNING: effects compiled with Effekseer {eff.version} (binary version "
+              f"{eff.profile.binary_version}) can't be loaded by the project's runtime "
+              f"({cfg.runtime_version}); install will refuse them.", file=sys.stderr)
+    if not eff.detected:
+        print(f"\nOK, but the CUI's version could not be detected; make sure it is Effekseer {eff.version} "
+              "(see docs/setup.md).")
+        return 0
+    print("\nOK.")
     return 0
 
 
@@ -752,6 +934,9 @@ def register(sub: argparse._SubParsersAction) -> None:
     sp.add_argument("--end", type=int, default=60)
     sp.add_argument("--loop", type=lambda s: s.lower() == "true", default=True, metavar="true|false")
     sp.add_argument("--force", action="store_true")
+    sp.add_argument("--effekseer-version", default=None, metavar="VERSION",
+                     help="target Effekseer version (e.g. 1.7.3.0, 1.80.7) instead of "
+                          "$EFFEKSEER_VERSION / effekseer.version in effect_config.json")
     sp.set_defaults(func=_wrap(cmd_new_project))
 
     sp = sub.add_parser("show", help="print a .efkproj node tree as an outline")
@@ -760,6 +945,9 @@ def register(sub: argparse._SubParsersAction) -> None:
 
     sp = sub.add_parser("validate", help="structural sanity checks")
     sp.add_argument("file")
+    sp.add_argument("--effekseer-version", default=None, metavar="VERSION",
+                     help="target Effekseer version (e.g. 1.7.3.0, 1.80.7) instead of "
+                          "$EFFEKSEER_VERSION / effekseer.version in effect_config.json")
     sp.set_defaults(func=_wrap(cmd_validate))
 
     sp = sub.add_parser("add-node", help="add a node under an existing node/root")
@@ -772,6 +960,17 @@ def register(sub: argparse._SubParsersAction) -> None:
     sp.add_argument("--life", default=None, metavar="CENTER|MIN:CENTER:MAX")
     sp.add_argument("--max-generation", type=int, default=None)
     sp.add_argument("--infinite", type=_parse_bool, default=None, metavar="true|false")
+    sp.add_argument("--generation-time", default=None, metavar="CENTER|MIN:CENTER:MAX")
+    sp.add_argument("--trigger-to-start", default=None, metavar="TRIGGER",
+                     help="none|trigger0..3 (+ parent-removed|parent-collided on 1.80) or an int")
+    sp.add_argument("--trigger-to-stop", default=None, metavar="TRIGGER")
+    sp.add_argument("--trigger-to-remove", default=None, metavar="TRIGGER")
+    sp.add_argument("--generation-timing", choices=["continuous", "trigger"], default=None,
+                     help="Effekseer 1.80 files (ToolVersion 1.80+) only")
+    sp.add_argument("--trigger", default=None, metavar="TRIGGER",
+                     help="trigger that generates particles (--generation-timing trigger; 1.80 files only)")
+    sp.add_argument("--trigger-count", default=None, metavar="CENTER|MIN:CENTER:MAX",
+                     help="particles per trigger (1.80 files only)")
     # RendererCommonValues
     sp.add_argument("--color-texture", default=None, metavar="PATH")
     sp.add_argument("--fade-in", default=None, metavar="FRAME[:START_SPEED[:END_SPEED]]",
@@ -796,25 +995,48 @@ def register(sub: argparse._SubParsersAction) -> None:
                      metavar="R:G:B[:A] (track; applies to all 6 rails)")
     sp.add_argument("--set", action="append", metavar="dotted.path=value",
                      help="may be repeated; escape hatch for anything not covered above")
+    sp.add_argument("--effekseer-version", default=None, metavar="VERSION",
+                     help="target Effekseer version (e.g. 1.7.3.0, 1.80.7) instead of "
+                          "$EFFEKSEER_VERSION / effekseer.version in effect_config.json")
     sp.set_defaults(func=_wrap(cmd_add_node))
 
     sp = sub.add_parser("set-params", help="set fields on an existing node")
     sp.add_argument("file")
     sp.add_argument("--path", required=True, help='node path, e.g. "1.0"')
     sp.add_argument("--set", action="append", required=True, metavar="dotted.path=value")
+    sp.add_argument("--effekseer-version", default=None, metavar="VERSION",
+                     help="target Effekseer version (e.g. 1.7.3.0, 1.80.7) instead of "
+                          "$EFFEKSEER_VERSION / effekseer.version in effect_config.json")
     sp.set_defaults(func=_wrap(cmd_set_params))
 
     sp = sub.add_parser("apply", help="apply a batch of ops from a JSON file")
     sp.add_argument("file")
     sp.add_argument("ops", help="path to a JSON list of {op, ...} objects")
+    sp.add_argument("--effekseer-version", default=None, metavar="VERSION",
+                     help="target Effekseer version (e.g. 1.7.3.0, 1.80.7) instead of "
+                          "$EFFEKSEER_VERSION / effekseer.version in effect_config.json")
     sp.set_defaults(func=_wrap(cmd_apply))
 
     sp = sub.add_parser("compile", help="compile .efkproj -> .efkefc via the Effekseer CUI")
     sp.add_argument("file")
     sp.add_argument("--out", default=None, help="output path (default: FILE with .efkefc)")
     sp.add_argument("--cui-path", default=None,
-                     help="Effekseer.exe to use instead of effekseer.cui_path in effect_config.json")
+                     help="Effekseer.exe to use instead of effekseer.cui_paths in effect_config.json")
+    sp.add_argument("--effekseer-version", default=None, metavar="VERSION",
+                     help="target Effekseer version (e.g. 1.7.3.0, 1.80.7) instead of "
+                          "$EFFEKSEER_VERSION / effekseer.version in effect_config.json")
     sp.set_defaults(func=_wrap(cmd_compile))
+
+    sp = sub.add_parser("upgrade", help="convert a .efkproj to the target Effekseer version's native format "
+                                        "(the CUI migrates it; needed for 1.80-only CommonValues settings)")
+    sp.add_argument("file")
+    sp.add_argument("--out", default=None, help="output path in the same folder (default: overwrite FILE)")
+    sp.add_argument("--cui-path", default=None,
+                     help="Effekseer.exe to use instead of effekseer.cui_paths in effect_config.json")
+    sp.add_argument("--effekseer-version", default=None, metavar="VERSION",
+                     help="target Effekseer version (e.g. 1.7.3.0, 1.80.7) instead of "
+                          "$EFFEKSEER_VERSION / effekseer.version in effect_config.json")
+    sp.set_defaults(func=_wrap(cmd_upgrade))
 
     sp = sub.add_parser("install", help="copy a compiled .efkefc into the project's effect dir "
                                         "(+ .meta when meta.enabled)")
@@ -827,7 +1049,10 @@ def register(sub: argparse._SubParsersAction) -> None:
     sp = sub.add_parser("check-env", help="print the resolved effect_config.json settings and "
                                           "check that the Effekseer CUI exists")
     sp.add_argument("--cui-path", default=None,
-                     help="Effekseer.exe to use instead of effekseer.cui_path in effect_config.json")
+                     help="Effekseer.exe to use instead of effekseer.cui_paths in effect_config.json")
+    sp.add_argument("--effekseer-version", default=None, metavar="VERSION",
+                     help="target Effekseer version (e.g. 1.7.3.0, 1.80.7) instead of "
+                          "$EFFEKSEER_VERSION / effekseer.version in effect_config.json")
     sp.set_defaults(func=_wrap(cmd_check_env))
 
     sp = sub.add_parser("export", help="copy the distributable toolkit files into another directory "

@@ -2,7 +2,14 @@
 
 Effekseer のパーティクルエフェクト（`.efkproj`）を、Effekseer の GUI エディタを開かずに
 Python のコマンドで作成・編集し、Effekseer の CUI で `.efkefc` にコンパイルするツールです。
-Python の標準ライブラリだけで動きます。
+Python の標準ライブラリだけで動くので、`pip install` は不要です。
+
+## 必要なもの
+
+- **Python 3.10 以上**（3.13 / 3.14 で動作確認済み）。**入っていない場合はインストールしてください。**
+  `python --version` で確認できます。インストール手順は
+  [`tools/effect/SETUP.md` の「Python のインストール」](tools/effect/SETUP.md#python-のインストール)を見てください。
+- `compile` を使う場合は Windows と Effekseer（検証済みは 1.7.3.0）
 
 > [!WARNING]
 > このツールは **Effekseer 1.7.3.0** で検証しています。これと違うバージョンの Effekseer を使っていると、
@@ -12,6 +19,7 @@ Python の標準ライブラリだけで動きます。
 
 ## クイックスタート
 
+0. `python --version` で Python 3.10 以上が入っていることを確認します（入っていなければ上の手順でインストール）。
 1. このリポジトリを clone します（自分のプロジェクトで使う場合は `tools/` フォルダをプロジェクト直下にコピーします）。
 2. `tools/effect/effect_config.json` の `effekseer.cui_path` に、自分の PC の `Effekseer.exe` のパスを書きます。
 

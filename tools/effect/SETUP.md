@@ -19,12 +19,39 @@ Effekseer のパーティクルエフェクト（`.efkproj`）を Python のコ�
 
 | 項目 | 内容 |
 |---|---|
-| Python | Python 3（標準ライブラリのみ。追加の `pip install` は不要。3.13 で動作確認済み） |
+| Python | **Python 3.10 以上**（3.13 / 3.14 で動作確認済み）。Python に最初から入っている標準ライブラリだけを使うので、`pip install` は不要です。**Python が入っていない場合は、下の「Python のインストール」の手順でインストールしてください** |
 | OS | Windows（動作確認は Windows 11 のみ）。`compile` は Effekseer の `Effekseer.exe` を使うので Windows が必要です |
 | Effekseer | `compile` に必要。検証済みのバージョンは **1.7.3.0**（上の注意を参照） |
 
 Effekseer はこのツールに同梱していません。公式サイトからダウンロードして、好きな場所に展開してください。
 使うのは展開したフォルダの中の `Tool/Effekseer.exe` です。
+
+### Python のインストール
+
+まず、コマンドプロンプトか PowerShell で次のコマンドを実行して、Python が入っているか確認します。
+
+```
+python --version
+```
+
+- `Python 3.10.x` 以上（`3.13.x` など）が表示されたら、インストール済みです。次の章へ進んでください。
+- 次のどれかになった場合は、Python が入っていないか古いので、インストールしてください。
+  - `Python was not found; run without arguments to install from the Microsoft Store ...` と表示される
+  - `'python' は、内部コマンドまたは外部コマンド...として認識されていません` と表示される
+  - Microsoft Store が開く
+  - `Python 3.9.x` 以下が表示される
+
+インストール手順:
+
+1. https://www.python.org/downloads/ を開いて、最新の Python 3 のインストーラーをダウンロードします。
+2. インストーラーを起動し、最初の画面の下にある **「Add python.exe to PATH」にチェックを入れて**から「Install Now」を押します。
+   このチェックを忘れると、`python` コマンドが使えません（その場合はインストーラーを起動し直して「Modify」から設定するか、アンインストールしてから入れ直してください）。
+3. インストールが終わったら、**コマンドプロンプト / PowerShell を一度閉じて開き直し**、もう一度 `python --version` で確認します。
+
+`winget` が使える場合は、`winget install Python.Python.3.13` でもインストールできます。
+
+Python の標準ライブラリは Python 本体と一緒にインストールされるので、別に入れる必要はありません。
+このツールは Python 3.10 より古いバージョンで実行すると、インストールを案内するメッセージを表示して終了します。
 
 ## 3. 入手と配置
 
@@ -120,6 +147,9 @@ python -m tools.effect install work/Spark.efkefc --dest Effects/Spark.efkefc
 
 | エラー | 原因と対処 |
 |---|---|
+| `Python was not found` / `'python' は、内部コマンドまたは外部コマンド...` / Microsoft Store が開く | Python がインストールされていないか、PATH が通っていません。2 章の「Python のインストール」を見てください |
+| `tools.effect には Python 3.10 以上が必要です` | Python が古いです。2 章の手順で新しい Python をインストールしてください |
+| `No module named tools.effect` | `tools/` があるフォルダ以外でコマンドを実行しています。`tools/` があるフォルダに移動してから実行してください |
 | `Effekseer CUI (Tool/Effekseer.exe) not found` | `effekseer.cui_path` が空か、パスが間違っています。`check-env` で試したパスを確認してください |
 | `invalid JSON at line N column M` | 設定ファイルの JSON が壊れています。多いのはパスの `\` が 1 つのままになっているケースです（4 章を参照） |
 | `config file not found` | `tools/effect/effect_config.json` がありません。公開リポジトリから取り直してください |

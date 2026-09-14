@@ -22,6 +22,7 @@ Effekseer のパーティクルエフェクト（`.efkproj`）を Python のコ�
 | Python | **Python 3.10 以上**（3.13 / 3.14 で動作確認済み）。Python に最初から入っている標準ライブラリだけを使うので、`pip install` は不要です。**Python が入っていない場合は、下の「Python のインストール」の手順でインストールしてください** |
 | OS | Windows（動作確認は Windows 11 のみ）。`compile` は Effekseer の `Effekseer.exe` を使うので Windows が必要です |
 | Effekseer | `compile` に必要。検証済みのバージョンは **1.7.3.0**（上の注意を参照） |
+| AI で使う場合 | **ChatGPT や Gemini などのブラウザで使う AI では使えません**（PC 上でコマンドを実行できないため）。Claude Code のように PC 上でコマンドを実行できる AI ツールを使ってください |
 
 Effekseer はこのツールに同梱していません。公式サイトからダウンロードして、好きな場所に展開してください。
 使うのは展開したフォルダの中の `Tool/Effekseer.exe` です。

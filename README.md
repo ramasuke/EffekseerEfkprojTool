@@ -17,6 +17,12 @@ Python の標準ライブラリだけで動くので、`pip install` は不要�
 > その場合は **NiceBody に連絡してください**（[Issues](https://github.com/ramasuke/EffekseerEfkprojTool/issues)
 > に、使っている Effekseer のバージョンとエラーの内容を書いてください）。そのバージョンに対応したツールを作れるか試します。
 
+> [!IMPORTANT]
+> **ChatGPT や Gemini などのブラウザで使う AI では、このツールは使えません。**
+> このツールは自分の PC で Python と `Effekseer.exe` を実行し、PC 上のファイルを読み書きするためです。
+> ブラウザの AI はあなたの PC でコマンドを実行できません。
+> AI にツールを操作してもらう場合は、Claude Code のように PC 上でコマンドを実行できる AI ツールを使ってください。
+
 ## クイックスタート
 
 0. `python --version` で Python 3.10 以上が入っていることを確認します（入っていなければ上の手順でインストール）。

@@ -1,0 +1,18 @@
+{
+    "effekseer": {
+        "cui_path": "",
+        "verified_version": "1.7.3.0"
+    },
+    "project": {
+        "root": "",
+        "effect_dir": "Effects",
+        "source_subdir": "_Source"
+    },
+    "meta": {
+        "enabled": false,
+        "asset_type": "NanamiEngine::Module::Asset::ParticleFile"
+    },
+    "selftest": {
+        "corpus_dir": ""
+    }
+}

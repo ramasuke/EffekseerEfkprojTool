@@ -18,7 +18,8 @@
 
 ### 2. セットアップする
 
-`tools/effect/effect_config.json` を開いて、Effekseer のバージョンと `Effekseer.exe` の場所を書きます。
+`tools/effect/effect_config.json` を開いて、**Effekseer のバージョン（`version`）と `Effekseer.exe` の場所（`cui_paths`）の 2 つだけ**を書きます。
+ほかの項目は変更しなくて使えます。
 
 ```json
 "effekseer": {
@@ -29,7 +30,7 @@
 },
 ```
 
-パスは `/` で区切ってください。ほかの設定項目は [docs/setup.md](docs/setup.md#5-設定ファイル) にあります。
+パスは `/` で区切ってください。
 
 このリポジトリのフォルダで、次の 2 つを実行して確認します。
 

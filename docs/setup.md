@@ -90,6 +90,10 @@ git clone https://github.com/ramasuke/EffekseerEfkprojTool.git
 
 PC やプロジェクトによって変わる値は、すべて `tools/effect/effect_config.json` に書きます。直接編集してください。
 
+> [!NOTE]
+> **書く必要があるのは `effekseer.version` と `effekseer.cui_paths` の 2 つだけです。** ほかの項目は、変更しなくても使えます。
+> 下の表の残りの項目は、ゲームのプロジェクトに組み込むときなど、必要になったときだけ変更してください。
+
 ```json
 {
     "effekseer": {

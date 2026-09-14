@@ -2,80 +2,83 @@
 
 [Effekseer](https://effekseer.github.io/) のパーティクルエフェクトを、**GUI エディタを開かずに Python のコマンドで作る**ためのツールです。
 エフェクトのソース（`.efkproj`）の作成・編集から、Effekseer 本体を使った `.efkefc` へのコンパイル、ゲームのプロジェクトへの配置までを
-コマンドだけで行えます。Python の標準ライブラリだけで動くので、`pip install` は要りません。
+コマンドだけで行えます。
+
+**AI エージェントに使わせることを前提に作っています。** 「赤い火花が飛び散るヒットエフェクトを作って」のように AI に頼むと、
+AI がこのツールのコマンドでエフェクトを組み立ててコンパイルします。人は、できたエフェクトを Effekseer のエディタで見て、直してほしいところを伝えます。
+Effekseer のエディタがクラッシュする値や、Effekseer に黙って無視される書き方は、ツールがエラーにして AI に直させます。
 
 > [!IMPORTANT]
-> **ブラウザで使う AI（Claude・ChatGPT・Gemini など）では、このツールは使えません。**
+> **PC 上でコマンドを実行できる AI エージェントが必要です。ブラウザで使う AI（Claude・ChatGPT・Gemini など）では使えません。**
 > このツールは自分の PC で Python と `Effekseer.exe` を実行し、PC 上のファイルを読み書きするためです。
-> PC にインストールしてコマンドを実行できる版の AI エージェントなら使えます。
+> Claude・ChatGPT・Gemini のどれでも、PC にインストールしてコマンドを実行できる版なら使えます。
 
 ## クイックスタート
 
-Windows で使います（動作確認は Windows 11）。コマンドは、コマンドプロンプトか PowerShell で実行します。
+Windows で使います（動作確認は Windows 11）。
 
-1. **Python をインストールします**（Python 3.10 以上が必要です）。
+### 1. 準備する（人がやること）
 
-   すでに入っているかは、次のコマンドで確認できます。`Python 3.10.x` 以上（`3.13.x` など）が表示されたら、この手順は飛ばしてください。
+1. **Python 3.10 以上をインストールします。**
+   コマンドプロンプトか PowerShell で `python --version` を実行し、`Python 3.10.x` 以上（`3.13.x` など）が表示されればインストール済みです。
+   入っていない（`Python was not found` などと表示される、Microsoft Store が開く）か 3.9 以下の場合は、
+   https://www.python.org/downloads/ から最新の Python 3 のインストーラーをダウンロードし、
+   最初の画面の下にある **「Add python.exe to PATH」にチェックを入れて**から「Install Now」を押してください
+   （[詳しい手順](docs/setup.md#python-のインストール)）。
+2. **Effekseer をダウンロードします。**
+   [Effekseer のリリースページ](https://github.com/effekseer/Effekseer/releases)から、
+   **ゲームで使っている Effekseer ランタイムと同じ系列**のバージョンの Windows 版ツール（`Effekseer1.80.7Win.zip` のような名前の zip）をダウンロードし、
+   好きな場所に展開します。展開した場所は次の手順で AI に伝えるので、メモしておいてください。
+3. **このツールをダウンロードします。** 次のどちらかです。
+   - このツールだけで使う: `git clone https://github.com/ramasuke/EffekseerEfkprojTool.git`（git を使わない場合は、このページの「Code」→「Download ZIP」）
+   - ゲームのプロジェクトで使う: ダウンロードした中の `tools/` フォルダを、プロジェクトの直下にコピー
+4. **AI エージェントを起動します。** 手順 3 のフォルダ（`tools/` があるフォルダ）を作業フォルダにして起動してください。
 
-   ```
-   python --version
-   ```
+### 2. AI にセットアップを頼む
 
-   入っていない（`Python was not found` などと表示される、Microsoft Store が開く）か、3.9 以下が表示された場合は、
-   https://www.python.org/downloads/ から最新の Python 3 のインストーラーをダウンロードして実行します。
-   最初の画面の下にある **「Add python.exe to PATH」にチェックを入れて**から「Install Now」を押してください。
-   インストールが終わったら、コマンドプロンプト / PowerShell を**一度閉じて開き直して**、もう一度 `python --version` で確認します。
-   詳しくは [docs/setup.md](docs/setup.md#python-のインストール) を見てください。
+次のように頼みます（`<>` の部分は自分の環境に書き換えてください）。
 
-2. **Effekseer をダウンロードします**。
+```
+EffekseerEfkprojTool（tools/effect）を使えるようにしてください。
+README.md と docs/setup.md を読んで、tools/effect/effect_config.json を設定し、
+python -m tools.effect check-env と python -m tools.effect selftest が通るまで確認してください。
 
-   [Effekseer のリリースページ](https://github.com/effekseer/Effekseer/releases)から、使いたいバージョンの Windows 版ツール
-   （`Effekseer1.80.7Win.zip` のような名前の zip）をダウンロードして、好きな場所に展開します。
-   **ゲームで使っている Effekseer ランタイムと同じ系列のバージョン**を選んでください（[下の注意](#対応している-effekseer)）。
+- Effekseer は <D:/Effekseer1.80.7Win> に展開してあります
+- ゲームで使っている Effekseer ランタイムは <1.80> 系です
+- エフェクトを配置するフォルダは <Assets/Effects> です（配置まで頼む場合）
+```
 
-3. **このツールをダウンロードします**。
+ゲームのプロジェクトに `tools/` をコピーした場合は、`README.md` と `docs/` もそのプロジェクトに置くか、AI にこのリポジトリの場所を伝えてください。
 
-   ```
-   git clone https://github.com/ramasuke/EffekseerEfkprojTool.git
-   cd EffekseerEfkprojTool
-   ```
+### 3. AI にエフェクトを頼む
 
-   git を使わない場合は、このページの「Code」→「Download ZIP」でダウンロードして展開し、そのフォルダに移動してください。
+テクスチャ画像はこのツールに含まれていないので、使いたい画像（パーティクル用の PNG など）を用意して、場所を伝えてください。
+Effekseer の zip の `Sample` フォルダにある画像も使えます（使うときは、それぞれのライセンスを確認してください）。
 
-4. **設定ファイルを書きます**。`tools/effect/effect_config.json` に、使う Effekseer のバージョンと、手順 2 で展開した `Effekseer.exe` の場所を書きます。
+作りたいエフェクトを言葉で伝えます。
 
-   ```json
-   "effekseer": {
-       "version": "1.80.7",
-       "cui_paths": {
-           "1.80.7": "D:/Effekseer1.80.7Win/Tool/Effekseer.exe"
-       }
-   },
-   ```
+```
+docs/usage.md を読んで、tools/effect を使ってエフェクトを作ってください。
+.efkproj を直接書き換えず、コマンド（add-node・set-params・apply）で作り、validate と compile まで通してください。
 
-   Windows のパスは `/` で区切ってください（`\` を 1 つで書くと JSON のエラーになります）。
+作ってほしいもの: <敵に攻撃が当たったときの、赤とオレンジの火花が 0.5 秒くらいで飛び散るヒットエフェクト>
+保存先: <work/HitSpark.efkproj>
+テクスチャ: <work/Texture/Particle01.png を使ってよい>
+```
 
-5. **動作を確認します**。
+AI がコンパイルまで終えたら、できた `.efkefc` を **Effekseer のエディタで開いて見た目を確認**し、直してほしいところをそのまま伝えます。
 
-   ```
-   python -m tools.effect check-env
-   python -m tools.effect selftest
-   ```
+```
+火花をもっと大きく、数を倍にして、消えるのを少しゆっくりにしてください。
+```
 
-   `check-env` の最後が `OK.`、`selftest` の最後が `N/N checks passed` になれば準備完了です。
+仕上がったら、プロジェクトへの配置も頼めます。
 
-6. **エフェクトを作ってコンパイルします**。
+```
+work/HitSpark.efkefc を install で <Assets/Effects/HitSpark.efkefc> に配置してください。
+```
 
-   ```
-   python -m tools.effect new-project Spark --dir work
-   python -m tools.effect add-node work/Spark.efkproj --kind ring --name Burst --life 20 --color 255:200:120:255
-   python -m tools.effect add-node work/Spark.efkproj --kind sprite --name Glow --max-generation 30 --generation-shape sphere --radius 0:0.5:1 --fade-out 10
-   python -m tools.effect show work/Spark.efkproj
-   python -m tools.effect compile work/Spark.efkproj
-   ```
-
-   `work/Spark.efkefc` ができます。Effekseer のエディタで開いて見た目を確認できます。
-   コマンドの詳しい使い方は [docs/usage.md](docs/usage.md) を見てください。
+コマンドを自分で実行したい場合は、[docs/usage.md](docs/usage.md) にすべてのコマンドと使い方があります。
 
 ## できること
 

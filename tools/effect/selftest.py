@@ -27,6 +27,10 @@ Stages:
   8. effect_config.json loading (defaults, relative paths, JSON errors,
      meta.enabled=false install) and `export` (manifest complete, no
      user-profile paths, distributed config has no CUI path).
+  9. texture/model references: validate/compile refuse missing files and
+     --out in another folder; install copies referenced files next to --dest,
+     rebases the --project copy, refuses missing / conflicting / ../ refs; every
+     real _Source/ .efkproj resolves.
 
 Stages 3/4 and parts of 6 read real assets under project.effect_dir and skip
 when they are absent (e.g. outside NanamiEngine).
@@ -47,7 +51,7 @@ _REPO = _HERE.parents[2]
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
-from tools.effect import cli, config, enums, export, meta, presets as p, xmlio  # noqa: E402
+from tools.effect import assets, cli, config, enums, export, meta, presets as p, xmlio  # noqa: E402
 from tools.effect.model import Elem  # noqa: E402
 from tools.common import cereal_json as cj  # noqa: E402
 
@@ -609,8 +613,10 @@ def stage_enum_domains(r: Reporter) -> None:
         if not shipped.exists():
             r.ok(f"{shipped.name} asset paths (skipped: not present)")
         else:
+            # The effect is re-saved from the Effekseer editor now and then, so
+            # don't pin exact texture names - just that real paths come back.
             got = cli.efkefc_asset_paths(shipped)
-            if "Texture/Flame01.png" not in got:
+            if not got or not all((shipped.parent / rel).is_file() for rel in got):
                 raise AssertionError(f"efkefc_asset_paths({shipped.name}) = {got!r}")
             r.ok(f"efkefc_asset_paths() lists {len(got)} asset(s) of shipped {shipped.name}")
     except Exception:  # noqa: BLE001
@@ -742,6 +748,145 @@ def stage_config_and_export(r: Reporter) -> None:
         r.fail("export", traceback.format_exc())
 
 
+def _efkefc_with_assets(paths: list[str]) -> bytes:
+    """A minimal .efkefc whose INFO chunk lists ``paths`` (one string list)."""
+    import struct
+    chunk = struct.pack("<ii", 1, len(paths))
+    for s in paths:
+        chunk += struct.pack("<i", len(s) + 1) + (s + "\x00").encode("utf-16-le")
+    return b"EFKE\x00\x00\x00\x00INFO" + struct.pack("<i", len(chunk)) + chunk
+
+
+def _assert_cli_error(fn, needle: str, what: str) -> None:
+    try:
+        fn()
+    except cli.CliError as e:
+        if needle not in str(e):
+            raise AssertionError(f"{what}: CliError does not mention {needle!r}: {e}")
+        return
+    raise AssertionError(f"{what} was accepted")
+
+
+def stage_asset_references(r: Reporter) -> None:
+    r.section("stage 9: texture/model references (missing / outside-folder guards, install copies)")
+    import contextlib
+    import dataclasses
+    import io
+    import tempfile
+
+    try:
+        proj = p.new_project(root_children=[
+            p.sprite_node("Tex.png", sprite_block=p.sprite(),
+                          renderer_common=p.renderer_common(color_texture="Texture/a.png")),
+            p.model_node("M", model_block=p.model(model_path="Model/m.efkmodel")),
+            p.sprite_node("NoTex", sprite_block=p.sprite(), renderer_common=p.renderer_common()),
+        ])
+        got = sorted((e.tag, e.text) for e in assets.project_asset_elems(proj))
+        if got != [("ColorTexture", "Texture/a.png"), ("Model", "Model/m.efkmodel")]:
+            raise AssertionError(f"project_asset_elems() = {got!r}")
+        if [assets.escapes(s) for s in ("Texture/a.png", "../x.png", "a/../../x.png", "C:/x.png", "a/../x.png")] \
+                != [False, True, True, True, False]:
+            raise AssertionError("escapes() misclassified a path")
+        r.ok("project_asset_elems() finds ColorTexture/Model (not <Name>), escapes() spots ../ and absolute paths")
+    except Exception:  # noqa: BLE001
+        r.fail("assets helpers", traceback.format_exc())
+
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp) / "work"
+            work.mkdir()
+            proj_path = work / "Fx.efkproj"
+            xmlio.write(proj_path, p.new_project(root_children=[p.sprite_node(
+                "N", sprite_block=p.sprite(),
+                renderer_common=p.renderer_common(color_texture="Texture/missing.png"))]))
+            with contextlib.redirect_stdout(io.StringIO()):
+                if cli.cmd_validate(argparse.Namespace(file=str(proj_path))) != 1:
+                    raise AssertionError("validate accepted a missing texture")
+            _assert_cli_error(lambda: cli.cmd_compile(argparse.Namespace(
+                file=str(proj_path), out=None, cui_path=None)), "missing.png", "compile with a missing texture")
+            (work / "Texture").mkdir()
+            (work / "Texture" / "missing.png").write_bytes(b"png")
+            _assert_cli_error(lambda: cli.cmd_compile(argparse.Namespace(
+                file=str(proj_path), out=str(Path(tmp) / "elsewhere" / "Fx.efkefc"), cui_path=None)),
+                "same folder", "compile --out into another folder")
+        r.ok("validate reports and compile refuses missing textures; compile refuses --out in another folder")
+    except Exception:  # noqa: BLE001
+        r.fail("validate/compile asset guards", traceback.format_exc())
+
+    try:
+        with tempfile.TemporaryDirectory() as tmp, contextlib.redirect_stdout(io.StringIO()):
+            tmp_path = Path(tmp)
+            effect_dir = tmp_path / "Effects"
+            cfg = dataclasses.replace(CONFIG, project_root=tmp_path, effect_dir=effect_dir,
+                                      effect_dir_rel="Effects", source_subdir="_Source", meta_enabled=False)
+            with config.override(cfg):
+                work = tmp_path / "work"
+                (work / "Texture").mkdir(parents=True)
+                (work / "Texture" / "a.png").write_bytes(b"texture-a")
+                proj_path = work / "Fx.efkproj"
+                xmlio.write(proj_path, p.new_project(root_children=[p.sprite_node(
+                    "N", sprite_block=p.sprite(),
+                    renderer_common=p.renderer_common(color_texture="Texture/a.png"))]))
+                src = work / "Fx.efkefc"
+                src.write_bytes(_efkefc_with_assets(["Texture/a.png"]))
+                dest = effect_dir / "Sub" / "Fx.efkefc"
+
+                cli.cmd_install(argparse.Namespace(efkefc=str(src), project=str(proj_path), dest=str(dest)))
+                if (dest.parent / "Texture" / "a.png").read_bytes() != b"texture-a":
+                    raise AssertionError("install did not copy the referenced texture next to --dest")
+                source_dest = effect_dir / "_Source" / "Sub" / "Fx.efkproj"
+                copied = xmlio.read(source_dest)
+                if assets.missing_project_assets(copied, source_dest.parent):
+                    raise AssertionError("the _Source copy's texture path does not resolve")
+                if [e.text for e in assets.project_asset_elems(copied)] != ["../../Sub/Texture/a.png"]:
+                    raise AssertionError(f"_Source path = {[e.text for e in assets.project_asset_elems(copied)]}")
+                cli.cmd_install(argparse.Namespace(efkefc=str(src), project=None, dest=str(dest)))
+
+                (work / "Texture" / "a.png").write_bytes(b"texture-a-changed")
+                _assert_cli_error(lambda: cli.cmd_install(argparse.Namespace(
+                    efkefc=str(src), project=None, dest=str(dest))), "already installed", "install over a different texture")
+
+                dest2 = effect_dir / "Other" / "Fx.efkefc"
+                src.write_bytes(_efkefc_with_assets(["Texture/gone.png"]))
+                _assert_cli_error(lambda: cli.cmd_install(argparse.Namespace(
+                    efkefc=str(src), project=None, dest=str(dest2))), "gone.png", "install with a missing texture")
+                src.write_bytes(_efkefc_with_assets(["../OneDrive/Texture/a.png"]))
+                _assert_cli_error(lambda: cli.cmd_install(argparse.Namespace(
+                    efkefc=str(src), project=None, dest=str(dest2))), "outside", "install with a ../ path")
+                if dest2.parent.exists():
+                    raise AssertionError("a refused install still wrote files")
+        r.ok("install copies textures next to --dest, rebases the _Source copy, refuses missing / "
+             "conflicting / outside-folder references without writing anything")
+    except Exception:  # noqa: BLE001
+        r.fail("install asset handling", traceback.format_exc())
+
+    source_dir = REAL_EFFECT_DIR / CONFIG.source_subdir
+    projects = sorted(source_dir.rglob("*.efkproj")) if source_dir.is_dir() else []
+    if not projects:
+        r.ok(f"real _Source sweep (skipped: no .efkproj under {source_dir})")
+        return
+    try:
+        broken = []
+        unreadable = []
+        for path in projects:
+            name = path.relative_to(source_dir).as_posix()
+            try:
+                proj = cli._read_project(path)
+            except cli.CliError:
+                unreadable.append(name)
+                continue
+            missing = assets.missing_project_assets(proj, path.parent)
+            if missing:
+                broken.append(f"{name}: {missing}")
+        if broken:
+            raise AssertionError("\n".join(broken))
+        r.ok(f"all {len(projects) - len(unreadable)} readable real {CONFIG.source_subdir}/ .efkproj file(s) "
+             "reference existing files"
+             + (f" (skipped, not XML .efkproj: {', '.join(unreadable)})" if unreadable else ""))
+    except Exception:  # noqa: BLE001
+        r.fail("real _Source .efkproj references", traceback.format_exc())
+
+
 def main() -> int:
     r = Reporter()
     stage_formatting(r)
@@ -752,6 +897,7 @@ def main() -> int:
     stage_enum_domains(r)
     stage_corpus_sweep(r)
     stage_config_and_export(r)
+    stage_asset_references(r)
     return r.finish()
 
 

@@ -23,7 +23,7 @@ MANIFEST: list[tuple[str, str]] = [
     (".gitignore", f"{_DIST}/.gitignore"),
     ("tools/effect.py", "tools/effect.py"),
     *[(f"tools/effect/{n}", f"tools/effect/{n}") for n in (
-        "__init__.py", "__main__.py", "cli.py", "config.py", "enums.py", "export.py",
+        "__init__.py", "__main__.py", "assets.py", "cli.py", "config.py", "enums.py", "export.py",
         "meta.py", "model.py", "presets.py", "selftest.py", "xmlio.py",
         "README.md", "SETUP.md",
     )],

@@ -11,6 +11,7 @@ as ``--parent`` to attach a new top-level node. ``show`` prints these paths.
 from __future__ import annotations
 
 import argparse
+import filecmp
 import json
 import os
 import re
@@ -20,6 +21,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from . import assets
 from . import config
 from . import enums
 from . import meta as meta_mod
@@ -102,6 +104,26 @@ def _parse_fade(spec: str) -> dict:
     except ValueError as e:
         raise CliError(f"bad fade {spec!r}: {e}") from e
     return out
+
+
+def _read_project(path: Path) -> Elem:
+    if Path(path).read_bytes()[:4] == b"EFKE":
+        raise CliError(f"{path} is in the compiled .efkefc format, not an XML .efkproj (the Effekseer "
+                       "editor saves that format when you save from it); this toolkit can't read it")
+    try:
+        return xmlio.read(path)
+    except Exception as e:  # noqa: BLE001
+        raise CliError(f"{path} is not a readable .efkproj: {e}") from e
+
+
+def _warn_missing_assets_in(node: Elem, proj_path: Path) -> None:
+    """Warn (don't refuse - the file may be copied in later; `compile` refuses)
+    about texture/model/sound paths in ``node`` that don't exist yet."""
+    missing = assets.missing_project_assets(node, proj_path.parent)
+    if missing:
+        print(f"WARNING: {len(missing)} referenced file(s) don't exist relative to {proj_path.name} "
+              "(`compile` will refuse until they do):\n" + assets.describe_missing(missing),
+              file=sys.stderr)
 
 
 def _reject_enum_violations(node: Elem, label: str) -> None:
@@ -228,6 +250,9 @@ def cmd_validate(args: argparse.Namespace) -> int:
                          f"{sorted(p.DRAWING_TYPE)}; this may still compile fine via the "
                          "CUI, it just wasn't built by this toolkit)")
     problems.extend(enums.check_project(proj))
+    problems.extend(f"referenced file not found relative to {path.name}: {rel}"
+                    + ("  (points outside the folder - likely a path from another PC)" if assets.escapes(rel) else "")
+                    for rel in assets.missing_project_assets(proj, path.parent))
 
     if problems:
         print(f"{len(problems)} problem(s) in {path.name}:")
@@ -363,6 +388,7 @@ def cmd_add_node(args: argparse.Namespace) -> int:
     idx = len(parent_children.children) - 1
     new_path = idx if args.parent in ("", "root", ".") else f"{args.parent}.{idx}"
     print(f"added [{new_path}] {args.name} ({args.kind}) under [{args.parent or 'root'}]")
+    _warn_missing_assets_in(new_node, path)
     return 0
 
 
@@ -376,6 +402,7 @@ def cmd_set_params(args: argparse.Namespace) -> int:
     _reject_enum_violations(node, f"set-params [{args.path}]")
     xmlio.write(path, proj)
     print(f"updated [{args.path}] ({len(args.set)} field(s))")
+    _warn_missing_assets_in(node, path)
     return 0
 
 
@@ -414,13 +441,13 @@ def cmd_apply(args: argparse.Namespace) -> int:
             raise CliError(f"op {i}: unknown op {kind!r}")
     xmlio.write(path, proj)
     print(f"applied {len(ops)} op(s) to {path.name}")
+    _warn_missing_assets_in(proj, path)
     return 0
 
 
 # ---------------------------------------------------------------------------
 # compiled .efkefc introspection
-_ASSET_EXT_RE = re.compile(r"[^\x00]+?\.(?:png|jpg|jpeg|bmp|tga|dds|efkmodel|efkmat|efkcurve|wav)",
-                           re.IGNORECASE)
+_ASSET_EXT_RE = re.compile(r"[^\x00]+?\.(?:" + "|".join(assets.ASSET_EXTS) + ")", re.IGNORECASE)
 
 
 def efkefc_asset_paths(path: Path) -> list[str]:
@@ -512,16 +539,22 @@ def _find_cui_path(args: argparse.Namespace) -> Path:
 def cmd_compile(args: argparse.Namespace) -> int:
     in_path = _resolve(args.file)
     out_path = _resolve(args.out) if args.out else in_path.with_suffix(".efkefc")
-    cui = _find_cui_path(args)
     if out_path.resolve().parent != in_path.resolve().parent:
         # The CUI stores every ColorTexture/Model/Wave path *relative to the
-        # output file*, so compiling straight into Assets/Art/Effect/<Sub>/
-        # from _Source/<Sub>/ turns "Texture/x.png" into
-        # "../_Source/<Sub>/Texture/x.png" - the effect then depends on the
-        # _Source tree at runtime instead of the textures shipped next to it.
-        print(f"WARNING: --out is in a different directory than {in_path.name}; the CUI will "
-              "rewrite the effect's asset paths relative to that directory. Compile next to "
-              "the .efkproj and use `install --dest` to ship it instead.", file=sys.stderr)
+        # output file*, so compiling into another folder turns "Texture/x.png"
+        # into "../<somewhere>/Texture/x.png" - a path that breaks as soon as
+        # the .efkefc is moved or shipped.
+        raise CliError(f"--out must be in the same folder as {in_path.name}: the CUI rewrites the "
+                       "effect's texture/model paths relative to the output folder, so they would "
+                       "point outside it. Compile next to the .efkproj and use `install --dest` to "
+                       "ship it.")
+    missing = assets.missing_project_assets(_read_project(in_path), in_path.parent)
+    if missing:
+        raise CliError(f"{in_path.name} references {len(missing)} texture/model/sound file(s) that "
+                       f"don't exist relative to {in_path.parent}; nothing compiled (the CUI would "
+                       f"compile it anyway and the effect would render without them):\n"
+                       + assets.describe_missing(missing))
+    cui = _find_cui_path(args)
 
     result = subprocess.run(
         [str(cui), "-cui", "-in", str(in_path), "-o", str(out_path)],
@@ -544,25 +577,94 @@ def cmd_compile(args: argparse.Namespace) -> int:
     return 0
 
 
+def _plan_asset_copies(efkefc_src: Path, dest: Path) -> list[tuple[Path, Path]]:
+    """``(from, to)`` for every file ``efkefc_src`` references that has to be
+    copied next to ``dest``; raises (before anything is copied) when a path
+    points outside the effect's folder, a file can't be found, or a different
+    file with the same name is already installed."""
+    refs = list(dict.fromkeys(r for r in efkefc_asset_paths(efkefc_src) if r))
+    outside = [r for r in refs if assets.escapes(r)]
+    if outside:
+        raise CliError(f"{efkefc_src.name} references file(s) outside its own folder, so it was "
+                       "exported into a different folder than its .efkproj; nothing installed. "
+                       "Re-export/compile it into the same folder as the .efkproj:\n"
+                       + "\n".join(f"  - {r}" for r in outside))
+    copies: list[tuple[Path, Path]] = []
+    missing: list[str] = []
+    conflicts: list[str] = []
+    for rel in refs:
+        src, dst = efkefc_src.parent / rel, dest.parent / rel
+        if not src.is_file():
+            if not dst.is_file():
+                missing.append(rel)
+            continue
+        if dst.is_file():
+            if src.resolve() != dst.resolve() and not filecmp.cmp(src, dst, shallow=False):
+                conflicts.append(rel)
+            continue
+        copies.append((src, dst))
+    if missing:
+        raise CliError(f"{efkefc_src.name} references file(s) found neither next to it nor next to "
+                       f"--dest; nothing installed:\n" + "\n".join(f"  - {r}" for r in missing))
+    if conflicts:
+        raise CliError(f"a different file with the same name is already installed next to {dest.name} "
+                       "(possibly used by another effect); nothing installed. Rename the texture/model "
+                       "in your effect or remove the old file:\n"
+                       + "\n".join(f"  - {dest.parent / r}" for r in conflicts))
+    return copies
+
+
+def _rebased_project(project_src: Path, efkefc_src: Path, dest: Path, source_dest: Path) -> Elem:
+    """``project_src`` with every asset path rewritten to point, from
+    ``source_dest``'s folder, at the copy installed next to ``dest``."""
+    proj = _read_project(project_src)
+    missing = assets.missing_project_assets(proj, project_src.parent)
+    if missing:
+        raise CliError(f"{project_src.name} references file(s) that don't exist relative to it; "
+                       "nothing installed:\n" + assets.describe_missing(missing))
+    try:
+        for e in assets.project_asset_elems(proj):
+            rel = assets.relpath_posix(project_src.parent / e.text, efkefc_src.parent)
+            e.text = assets.relpath_posix(dest.parent / rel, source_dest.parent)
+    except ValueError as err:  # os.path.relpath across drives
+        raise CliError(f"can't express {project_src.name}'s asset paths relative to {source_dest.parent} "
+                       f"({err}); nothing installed") from err
+    return proj
+
+
 def cmd_install(args: argparse.Namespace) -> int:
     efkefc_src = _resolve(args.efkefc)
     dest = _resolve(args.dest)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(efkefc_src, dest)
-    _warn_missing_assets(dest)
-
     cfg = config.get()
     try:
-        rel = dest.resolve().relative_to(cfg.effect_dir)
+        dest_rel = dest.resolve().relative_to(cfg.effect_dir)
     except ValueError:
-        rel = Path(dest.name)
+        dest_rel = Path(dest.name)
 
+    copies = _plan_asset_copies(efkefc_src, dest)
+    project = None
     if args.project:
         project_src = _resolve(args.project)
-        source_dest = cfg.effect_dir / cfg.source_subdir / rel.with_suffix(".efkproj")
+        source_dest = cfg.effect_dir / cfg.source_subdir / dest_rel.with_suffix(".efkproj")
+        project = _rebased_project(project_src, efkefc_src, dest, source_dest)
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if efkefc_src.resolve() != dest.resolve():
+        shutil.copyfile(efkefc_src, dest)
+    for src, dst in copies:
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, dst)
+        print(f"copied asset  {dst}")
+    _warn_missing_assets(dest)
+
+    if project is not None:
         source_dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(project_src, source_dest)
-        print(f"copied source {source_dest}")
+        xmlio.write(source_dest, project)
+        print(f"copied source {source_dest} (asset paths point at the installed files)")
+        unresolved = assets.missing_project_assets(project, source_dest.parent)
+        if unresolved:
+            print(f"WARNING: {source_dest.name} references file(s) the compiled effect doesn't use, "
+                  "so they were not installed:\n" + assets.describe_missing(unresolved), file=sys.stderr)
 
     if not cfg.meta_enabled:
         print(f"installed {dest}")

@@ -24,12 +24,12 @@ python -m tools.effect <command>        # or: python tools/effect.py <command>
 | `selftest` | correctness gate — run after touching `model.py` / `xmlio.py` / `presets.py` / `enums.py` / `meta.py` |
 | `new-project NAME` | create `NAME.efkproj` (empty project skeleton) |
 | `show FILE` | print the node tree as an outline, with `[index.path]` addresses |
-| `validate FILE` | structural sanity checks (well-formed XML, required top-level elements, known `DrawingValues` kinds, **Effekseer enum-domain check** — see below) |
+| `validate FILE` | structural sanity checks (well-formed XML, required top-level elements, known `DrawingValues` kinds, **Effekseer enum-domain check** — see below, and texture/model/sound paths that don't resolve relative to the file; `add-node`/`set-params`/`apply` warn about the latter) |
 | `add-node` | add a `sprite` / `ring` / `ribbon` / `model` / `track` / `group` node under an existing node or the root |
 | `set-params` | set fields on an existing node via dotted tag paths |
 | `apply FILE OPS.json` | apply a batch of `add-node`/`set-params` ops atomically (primary agent interface) |
-| `compile FILE` | compile `.efkproj` → `.efkefc` via the Effekseer CUI set in `effect_config.json` |
-| `install EFKEFC --dest ...` | copy a compiled `.efkefc` into `project.effect_dir` (`Assets/Art/Effect/` here), mint a fresh-GUID `.meta` when `meta.enabled` (an existing `.meta` at `--dest` is kept as-is, GUID included, so re-installing never breaks prefab references), warn about referenced textures/models missing next to it, and (with `--project`) commit the source under `<effect_dir>/<source_subdir>/` (`Assets/Art/Effect/_Source/` here) |
+| `compile FILE` | compile `.efkproj` → `.efkefc` via the Effekseer CUI set in `effect_config.json`. **Refuses** (before running the CUI) when a referenced texture/model/sound doesn't exist relative to the `.efkproj`, or when `--out` is in another folder — the CUI itself compiles both without complaint |
+| `install EFKEFC --dest ...` | copy a compiled `.efkefc` into `project.effect_dir` (`Assets/Art/Effect/` here) **together with every texture/model it references** (same relative paths next to `--dest`), mint a fresh-GUID `.meta` when `meta.enabled` (an existing `.meta` at `--dest` is kept as-is, GUID included, so re-installing never breaks prefab references), and (with `--project`) commit the source under `<effect_dir>/<source_subdir>/` (`Assets/Art/Effect/_Source/` here) with its asset paths **rewritten to point at the installed files**. Refuses, writing nothing, when a reference points outside the effect's folder (`../...` — exported into another folder than its `.efkproj`), can't be found, or would overwrite a different same-named file |
 | `check-env` | print the resolved `effect_config.json` settings; exit 1 if the Effekseer CUI can't be found |
 | `export --out DIR` | copy the distributable files (`export.MANIFEST`, with `dist/effect_config.json` swapped in) into DIR — how the public EffekseerEfkprojTool repository is updated |
 

@@ -144,6 +144,12 @@ python -m tools.effect install work/Spark.efkefc --dest Effects/Spark.efkefc
 
 各コマンドの詳しいオプションは [`README.md`](README.md) か `python -m tools.effect <コマンド> --help` を見てください。
 
+テクスチャやモデルの扱い:
+
+- テクスチャ・モデルのパスは、`.efkproj` から見た相対パスで書きます（例: `work/Texture/Spark.png` なら `Texture/Spark.png`）。
+- 存在しないテクスチャを指していると、`add-node` などで警告が出て、`compile` はエラーで止まります。
+- `install` は、エフェクトが使うテクスチャ・モデルも `--dest` の隣に同じフォルダ構成でコピーします。`--project` で入れたソースの `.efkproj` は、インストールしたテクスチャを指すようにパスを書き換えます。
+
 ## 7. よくあるエラー
 
 | エラー | 原因と対処 |
@@ -155,7 +161,11 @@ python -m tools.effect install work/Spark.efkefc --dest Effects/Spark.efkefc
 | `invalid JSON at line N column M` | 設定ファイルの JSON が壊れています。多いのはパスの `\` が 1 つのままになっているケースです（4 章を参照） |
 | `config file not found` | `tools/effect/effect_config.json` がありません。公開リポジトリから取り直してください |
 | エフェクトをロードするときにエラーが出る | Effekseer のバージョンが 1.7.3.0 と違う可能性があります。1 章のとおり NiceBody に連絡してください |
-| テクスチャが表示されない | `compile --out` で `.efkproj` と別のフォルダに出力すると、テクスチャのパスがずれます。`.efkproj` と同じフォルダでコンパイルしてから `install --dest` で配置してください。`install` は足りないテクスチャを警告で表示します |
+| `references N texture/model/sound file(s) that don't exist` | `.efkproj` が、存在しないテクスチャやモデルを指しています（名前の打ち間違い、テクスチャを置き忘れた、など）。Effekseer はテクスチャが無くてもコンパイルできてしまい、表示されないエフェクトになるので、このツールはコンパイルを止めます。ファイルを `.efkproj` から見て書かれている場所に置くか、パスを直してください。`../` から始まるパスは、サンプル素材の作者の PC のパスが残っていることが多いです |
+| `--out must be in the same folder as ...` | `compile --out` に `.efkproj` と別のフォルダは指定できません。Effekseer は書き出し先を基準にテクスチャのパスを保存するので、別のフォルダに出すとパスがずれます。`.efkproj` と同じフォルダでコンパイルしてから `install --dest` で配置してください |
+| `references file(s) outside its own folder` | その `.efkefc` は、Effekseer で `.efkproj` と別のフォルダに書き出されたもので、テクスチャのパスがフォルダの外（`../...`）を指しています。`.efkproj` と同じフォルダに書き出し直してから `install` してください |
+| `a different file with the same name is already installed` | インストール先に、同じ名前で中身の違うテクスチャが既にあります（他のエフェクトが使っているかもしれないので、上書きしません）。自分のエフェクトのテクスチャの名前を変えてください |
+| `is in the compiled .efkefc format, not an XML .efkproj` | Effekseer のエディタで保存すると `.efkefc` 形式になり、このツールでは読めません。このツールで編集するのは XML の `.efkproj` だけです |
 
 ## 8. NanamiEngine からの更新（メンテナ向け）
 

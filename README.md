@@ -14,11 +14,7 @@
 ### 1. 準備する
 
 1. **Python 3.10 以上**を入れる（`python --version` で確認。入っていなければ[インストール手順](docs/setup.md#python-のインストール)）
-2. **Effekseer**（Windows 版）を[リリースページ](https://github.com/effekseer/Effekseer/releases)からダウンロードして展開する
-3. **このリポジトリ**を clone する（または「Code」→「Download ZIP」）
-
-> [!TIP]
-> Effekseer は、ゲームで使っている **Effekseer ランタイムと同じ系列**（1.7 系、1.80 系など）を選んでください。
+2. **このリポジトリ**を clone する（または「Code」→「Download ZIP」）
 
 ### 2. セットアップする
 
@@ -33,7 +29,8 @@
 },
 ```
 
-パスは `/` で区切ってください。ほかの設定項目は [docs/setup.md](docs/setup.md#5-設定ファイル) にあります。
+パスは `/` で区切ってください。バージョンは、ゲームで使っている **Effekseer ランタイムと同じ系列**（1.7 系、1.80 系など）にしてください。
+ほかの設定項目は [docs/setup.md](docs/setup.md#5-設定ファイル) にあります。
 
 このリポジトリのフォルダで、次の 2 つを実行して確認します。
 

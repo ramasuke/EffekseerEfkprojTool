@@ -1,84 +1,53 @@
 # EffekseerEfkprojTool
 
-[Effekseer](https://effekseer.github.io/) のパーティクルエフェクトを、**GUI エディタを開かずに Python のコマンドで作る**ためのツールです。
-エフェクトのソース（`.efkproj`）の作成・編集から、Effekseer 本体を使った `.efkefc` へのコンパイル、ゲームのプロジェクトへの配置までを
-コマンドだけで行えます。
+[Effekseer](https://effekseer.github.io/) のパーティクルエフェクトを、**AI エージェントにコマンドで作らせる**ためのツールです。
 
-**AI エージェントに使わせることを前提に作っています。** 「赤い火花が飛び散るヒットエフェクトを作って」のように AI に頼むと、
-AI がこのツールのコマンドでエフェクトを組み立ててコンパイルします。人は、できたエフェクトを Effekseer のエディタで見て、直してほしいところを伝えます。
-Effekseer のエディタがクラッシュする値や、Effekseer に黙って無視される書き方は、ツールがエラーにして AI に直させます。
+「赤い火花が飛び散るヒットエフェクトを作って」と頼むと、AI がエフェクトを組み立てて `.efkefc` にコンパイルします。
+人は、できたエフェクトを Effekseer のエディタで見て、直してほしいところを伝えます。
 
 > [!IMPORTANT]
-> **PC 上でコマンドを実行できる AI エージェントが必要です。ブラウザで使う AI（Claude・ChatGPT・Gemini など）では使えません。**
-> このツールは自分の PC で Python と `Effekseer.exe` を実行し、PC 上のファイルを読み書きするためです。
-> Claude・ChatGPT・Gemini のどれでも、PC にインストールしてコマンドを実行できる版なら使えます。
+> - **Windows** 専用です（動作確認は Windows 11）。
+> - **PC 上でコマンドを実行できる AI エージェント**が必要です。ブラウザで使う AI（Claude・ChatGPT・Gemini など）では使えません。
 
 ## クイックスタート
 
-Windows で使います（動作確認は Windows 11）。
+### 1. 準備する
 
-### 1. 準備する（人がやること）
+1. **Python 3.10 以上**を入れる（`python --version` で確認。入っていなければ[インストール手順](docs/setup.md#python-のインストール)）
+2. **Effekseer**（Windows 版）を[リリースページ](https://github.com/effekseer/Effekseer/releases)からダウンロードして展開する
+3. **このリポジトリ**を clone する（または「Code」→「Download ZIP」）
+4. そのフォルダで **AI エージェント**を起動する
 
-1. **Python 3.10 以上をインストールします。**
-   コマンドプロンプトか PowerShell で `python --version` を実行し、`Python 3.10.x` 以上（`3.13.x` など）が表示されればインストール済みです。
-   入っていない（`Python was not found` などと表示される、Microsoft Store が開く）か 3.9 以下の場合は、
-   https://www.python.org/downloads/ から最新の Python 3 のインストーラーをダウンロードし、
-   最初の画面の下にある **「Add python.exe to PATH」にチェックを入れて**から「Install Now」を押してください
-   （[詳しい手順](docs/setup.md#python-のインストール)）。
-2. **Effekseer をダウンロードします。**
-   [Effekseer のリリースページ](https://github.com/effekseer/Effekseer/releases)から、
-   **ゲームで使っている Effekseer ランタイムと同じ系列**のバージョンの Windows 版ツール（`Effekseer1.80.7Win.zip` のような名前の zip）をダウンロードし、
-   好きな場所に展開します。展開した場所は次の手順で AI に伝えるので、メモしておいてください。
-3. **このツールをダウンロードします。** 次のどちらかです。
-   - このツールだけで使う: `git clone https://github.com/ramasuke/EffekseerEfkprojTool.git`（git を使わない場合は、このページの「Code」→「Download ZIP」）
-   - ゲームのプロジェクトで使う: ダウンロードした中の `tools/` フォルダを、プロジェクトの直下にコピー
-4. **AI エージェントを起動します。** 手順 3 のフォルダ（`tools/` があるフォルダ）を作業フォルダにして起動してください。
+> [!TIP]
+> Effekseer は、ゲームで使っている **Effekseer ランタイムと同じ系列**（1.7 系、1.80 系など）を選んでください。
 
 ### 2. AI にセットアップを頼む
 
-次のように頼みます（`<>` の部分は自分の環境に書き換えてください）。
-
 ```
-EffekseerEfkprojTool（tools/effect）を使えるようにしてください。
-README.md と docs/setup.md を読んで、tools/effect/effect_config.json を設定し、
-python -m tools.effect check-env と python -m tools.effect selftest が通るまで確認してください。
-
-- Effekseer は <D:/Effekseer1.80.7Win> に展開してあります
-- ゲームで使っている Effekseer ランタイムは <1.80> 系です
-- エフェクトを配置するフォルダは <Assets/Effects> です（配置まで頼む場合）
+README.md と docs/setup.md を読んで、このツールを使えるようにして。
+Effekseer は D:/Effekseer1.80.7Win に展開してある。ゲームのランタイムは 1.80 系。
 ```
-
-ゲームのプロジェクトに `tools/` をコピーした場合は、`README.md` と `docs/` もそのプロジェクトに置くか、AI にこのリポジトリの場所を伝えてください。
 
 ### 3. AI にエフェクトを頼む
 
-テクスチャ画像はこのツールに含まれていないので、使いたい画像（パーティクル用の PNG など）を用意して、場所を伝えてください。
-Effekseer の zip の `Sample` フォルダにある画像も使えます（使うときは、それぞれのライセンスを確認してください）。
-
-作りたいエフェクトを言葉で伝えます。
-
 ```
-docs/usage.md を読んで、tools/effect を使ってエフェクトを作ってください。
-.efkproj を直接書き換えず、コマンド（add-node・set-params・apply）で作り、validate と compile まで通してください。
-
-作ってほしいもの: <敵に攻撃が当たったときの、赤とオレンジの火花が 0.5 秒くらいで飛び散るヒットエフェクト>
-保存先: <work/HitSpark.efkproj>
-テクスチャ: <work/Texture/Particle01.png を使ってよい>
+docs/usage.md を読んで、赤い火花が飛び散るヒットエフェクトを
+work/HitSpark.efkproj に作って、コンパイルまでして。
+テクスチャは work/Texture/Particle01.png を使って。
 ```
 
-AI がコンパイルまで終えたら、できた `.efkefc` を **Effekseer のエディタで開いて見た目を確認**し、直してほしいところをそのまま伝えます。
+テクスチャ画像はこのツールに含まれていません。使う画像は自分で用意してください。
+
+### 4. 見た目を確認して、直してもらう
+
+できた `work/HitSpark.efkefc` を Effekseer のエディタで開いて確認し、直してほしいことを伝えます。
 
 ```
-火花をもっと大きく、数を倍にして、消えるのを少しゆっくりにしてください。
+火花をもっと大きくして、数を倍にして。
 ```
 
-仕上がったら、プロジェクトへの配置も頼めます。
-
-```
-work/HitSpark.efkefc を install で <Assets/Effects/HitSpark.efkefc> に配置してください。
-```
-
-コマンドを自分で実行したい場合は、[docs/usage.md](docs/usage.md) にすべてのコマンドと使い方があります。
+- ゲームのプロジェクトに組み込む方法は [docs/setup.md](docs/setup.md#7-自分のプロジェクトに組み込む)
+- コマンドを自分で実行する方法は [docs/usage.md](docs/usage.md)
 
 ## できること
 

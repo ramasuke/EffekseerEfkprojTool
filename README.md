@@ -16,19 +16,37 @@
 1. **Python 3.10 以上**を入れる（`python --version` で確認。入っていなければ[インストール手順](docs/setup.md#python-のインストール)）
 2. **Effekseer**（Windows 版）を[リリースページ](https://github.com/effekseer/Effekseer/releases)からダウンロードして展開する
 3. **このリポジトリ**を clone する（または「Code」→「Download ZIP」）
-4. そのフォルダで **AI エージェント**を起動する
 
 > [!TIP]
 > Effekseer は、ゲームで使っている **Effekseer ランタイムと同じ系列**（1.7 系、1.80 系など）を選んでください。
 
-### 2. AI にセットアップを頼む
+### 2. セットアップする
+
+`tools/effect/effect_config.json` を開いて、Effekseer のバージョンと `Effekseer.exe` の場所を書きます。
+
+```json
+"effekseer": {
+    "version": "1.80.7",
+    "cui_paths": {
+        "1.80.7": "D:/Effekseer1.80.7Win/Tool/Effekseer.exe"
+    }
+},
+```
+
+パスは `/` で区切ってください。ほかの設定項目は [docs/setup.md](docs/setup.md#5-設定ファイル) にあります。
+
+このリポジトリのフォルダで、次の 2 つを実行して確認します。
 
 ```
-README.md と docs/setup.md を読んで、このツールを使えるようにして。
-Effekseer は D:/Effekseer1.80.7Win に展開してある。ゲームのランタイムは 1.80 系。
+python -m tools.effect check-env
+python -m tools.effect selftest
 ```
+
+`check-env` の最後が `OK.`、`selftest` の最後が `N/N checks passed` なら完了です。
 
 ### 3. AI にエフェクトを頼む
+
+このリポジトリのフォルダで AI エージェントを起動して、作りたいエフェクトを伝えます。
 
 ```
 docs/usage.md を読んで、赤い火花が飛び散るヒットエフェクトを

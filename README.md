@@ -65,7 +65,7 @@ work/HitSpark.efkproj に作って、コンパイルまでして。
 
 あとは 3 と 4 を繰り返すだけです。必要になったら、次も見てください。
 
-- ゲームのプロジェクトに組み込む方法は [docs/setup.md](docs/setup.md#7-自分のプロジェクトに組み込む)
+- 詳細仕様, 環境最適化 [docs/setup.md](docs/setup.md#7-自分のプロジェクトに組み込む)
 - コマンドを自分で実行する方法は [docs/usage.md](docs/usage.md)
 
 ## できること

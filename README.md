@@ -7,7 +7,7 @@
 
 > [!IMPORTANT]
 > - **Windows** 専用です（動作確認は Windows 11）。
-> - **PC 上でコマンドを実行できる AI エージェント**が必要です。ブラウザで使う AI（Claude・ChatGPT・Gemini など）では使えません。
+> - **PC 上でコマンドを実行できる AI エージェント**が必要です。ブラウザで使う AI（Claude・ChatGPT・Gemini など）では使えませんので、claude cli, gemini cli, chatgptのインストール版, cursorなどお使いください。
 
 ## クイックスタート
 

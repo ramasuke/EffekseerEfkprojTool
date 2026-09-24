@@ -1,21 +1,20 @@
-"""Generic order-preserving element tree for Effekseer's ``.efkproj`` format.
+"""Effekseer の ``.efkproj`` 形式向けの、順序を保つ汎用要素ツリー。
 
-Effekseer's ``.efkproj`` serializes its editor object graph directly as nested
-XML elements: no attributes anywhere, every element is either a text leaf
-(``<X>1.8</X>``) or a pure container of child elements (``<Ring>...</Ring>``),
-never both. An empty container and an empty-text leaf are the same thing on
-disk (``<Children />``), so this model does not distinguish them either.
+Effekseer の ``.efkproj`` はエディタのオブジェクトグラフをそのまま入れ子の XML 要素
+としてシリアライズする: 属性はどこにも無く、各要素はテキストのリーフ
+(``<X>1.8</X>``) か子要素だけのコンテナ (``<Ring>...</Ring>``) のどちらかで、
+両方ということは無い。空のコンテナと空テキストのリーフはディスク上で同じもの
+(``<Children />``) なので、このモデルでも区別しない。
 
-This intentionally does **not** model the full Effekseer schema - hundreds of
-fields across dozens of node kinds, most only sparsely present in any given
-file. See ``tools/effect/presets.py`` for the curated, sample-derived builder
-functions that sit on top of this generic tree.
+Effekseer の完全なスキーマは意図的にモデル化 **していない** - 数十のノード種別に
+わたる数百のフィールドがあり、ほとんどはどのファイルにもまばらにしか現れない。
+この汎用ツリーの上に載る、サンプル由来の厳選したビルダー関数は
+``tools/effect/presets.py`` を参照。
 
-``Elem.text`` always holds the *literal* string content exactly as parsed -
-never re-derived from a typed value - so a file read with :mod:`xmlio` and
-written back out round-trips byte-for-byte. Formatting a fresh Python value
-(``int``/``float``/``bool``) into element text is :mod:`presets`'s job, not
-this module's.
+``Elem.text`` は常に解析した文字列内容を *そのまま* 保持する - 型付きの値から
+作り直すことは無い - ので、:mod:`xmlio` で読んだファイルを書き戻すとバイト単位で
+一致する。新しい Python の値 (``int``/``float``/``bool``) を要素テキストに
+整形するのは :mod:`presets` の仕事で、このモジュールの仕事ではない。
 """
 
 from __future__ import annotations
@@ -56,7 +55,7 @@ class Elem:
         return elem
 
     def get(self, path: str) -> "Elem | None":
-        """Resolve a dotted tag path, e.g. ``"DrawingValues.Ring.CenterRatio_Fixed"``."""
+        """ドット区切りのタグパスを解決する。例: ``"DrawingValues.Ring.CenterRatio_Fixed"``。"""
         node = self
         for part in path.split("."):
             node = node.child(part)
@@ -65,9 +64,9 @@ class Elem:
         return node
 
     def set_path(self, path: str, text: str) -> "Elem":
-        """Set a leaf's text at a dotted tag path, creating intermediate elements
-        as needed. Overwrites any existing children at the leaf (it becomes a
-        pure text leaf).
+        """ドット区切りのタグパスにあるリーフのテキストを設定し、途中の要素は必要に
+        応じて作る。そのリーフに既存の子があれば上書きする (純粋なテキストリーフに
+        なる)。
         """
         node = self
         parts = path.split(".")

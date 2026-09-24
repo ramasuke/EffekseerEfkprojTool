@@ -1,28 +1,27 @@
-"""cereal JSON dialect: a reader/printer that byte-reproduces the output of
-``cereal::JSONOutputArchive`` (RapidJSON PrettyWriter, 4-space indent) as written
-by NanamiEngine on Windows.
+"""cereal JSON 方言: NanamiEngine が Windows 上で書き出す
+``cereal::JSONOutputArchive`` (RapidJSON PrettyWriter, 4スペースインデント) の出力を
+バイト単位で再現するリーダー/プリンタ。
 
-Design notes (verified against the committed ``*.enemyBehaviourData`` fixtures,
-and - for repeated-sibling-key objects - against ``*.scene``/``*.prefab``):
+設計メモ (コミット済みの ``*.enemyBehaviourData`` フィクスチャ、および
+兄弟キーが重複するオブジェクトについては ``*.scene``/``*.prefab`` で検証済み):
 
-* Files are UTF-8, **no BOM**, **CRLF** line endings, **no trailing newline**.
-* Indent: 4 spaces. ``"key": value``. One array element per line. Empty
-  object/array collapse to ``{}`` / ``[]`` on one line.
-* String escaping matches RapidJSON's default: only ``" \\ \b \f \n \r \t`` and
-  control chars < 0x20 (as ``\\uXXXX``); everything else (incl. non-ASCII) verbatim.
-* Numbers: RapidJSON uses Grisu2, which is *usually* shortest-round-trip but
-  occasionally emits one extra (differing) least-significant digit that Python's
-  ``repr`` does not. To round-trip existing files byte-for-byte we therefore keep
-  the **original numeric literal text** for every number parsed from a file
-  (:class:`Num`). Numbers synthesised by the toolkit are rendered with
-  :func:`format_number` (``repr``-based, ``.0`` appended when integral).
-* Some engine types (e.g. ``Transform::children_``) serialise a collection as a
-  count followed by the **same NVP name repeated** as sibling keys, e.g.
-  ``{"childCount": 3, "child": {...}, "child": {...}, "child": {...}}`` - valid
-  per the JSON grammar (key uniqueness is not required) and exactly what cereal's
-  RapidJSON-backed archives read/write. :class:`OrderedObj` preserves every
-  occurrence; only ``obj["key"] = value`` (explicit single-key mutation) dedups
-  in place. Parsing (:func:`loads`) never dedups - see :meth:`OrderedObj.__init__`.
+* ファイルは UTF-8、**BOM なし**、**CRLF** 改行、**末尾改行なし**。
+* インデント: 4スペース。``"key": value``。配列要素は1行に1つ。空の
+  object/array は1行の ``{}`` / ``[]`` に畳む。
+* 文字列エスケープは RapidJSON の既定に合わせる: ``" \\ \b \f \n \r \t`` と
+  0x20 未満の制御文字 (``\\uXXXX`` として) のみ。それ以外 (非 ASCII 含む) はそのまま。
+* 数値: RapidJSON は Grisu2 を使う。*通常は* 最短の往復表現だが、Python の
+  ``repr`` が出さない余分な (異なる) 最下位桁をまれに1つ出力する。既存ファイルを
+  バイト単位で往復させるため、ファイルからパースした数値はすべて
+  **元の数値リテラル文字列** を保持する (:class:`Num`)。ツールキットが生成した数値は
+  :func:`format_number` で描画する (``repr`` ベース、整数値なら ``.0`` を付加)。
+* 一部のエンジン型 (例: ``Transform::children_``) はコレクションを、件数の後に
+  **同じ NVP 名を繰り返した** 兄弟キーとしてシリアライズする。例:
+  ``{"childCount": 3, "child": {...}, "child": {...}, "child": {...}}`` - JSON 文法上
+  有効 (キーの一意性は必須ではない) で、cereal の RapidJSON ベースのアーカイブが
+  まさにこの形で読み書きする。:class:`OrderedObj` はすべての出現を保持し、
+  ``obj["key"] = value`` (明示的な単一キー変更) のときだけその場で重複を除く。
+  パース (:func:`loads`) は決して重複除去しない - :meth:`OrderedObj.__init__` を参照。
 """
 
 from __future__ import annotations
@@ -32,28 +31,28 @@ from typing import Any, Iterable, Iterator
 
 
 # ---------------------------------------------------------------------------
-# ordered object
+# 順序付きオブジェクト
 # ---------------------------------------------------------------------------
 class OrderedObj:
-    """An insertion-ordered string-keyed mapping (JSON object).
+    """挿入順を保つ文字列キーのマッピング (JSON オブジェクト)。
 
-    Behaves enough like a dict for our needs; preserves order and *preserves
-    duplicate keys exactly as given* (a JSON object is a list of member pairs,
-    not a set of unique keys - see module docstring). Bulk construction (from
-    :func:`loads`, or from another object's ``.items()``) keeps every pair
-    unconditionally. ``obj[key] = value`` (single-key mutation, used throughout
-    the editors) still replaces the first match in place for convenience.
+    必要な範囲で dict のように振る舞う。順序を保ち、*重複キーも与えられたとおりに
+    保持する* (JSON オブジェクトはメンバーペアのリストであって一意キーの集合ではない
+    - モジュールの docstring を参照)。一括構築 (:func:`loads` から、または別の
+    オブジェクトの ``.items()`` から) はすべてのペアを無条件に保持する。
+    ``obj[key] = value`` (エディタ全体で使う単一キー変更) は利便性のため、
+    従来どおり最初に一致したものをその場で置き換える。
     """
 
     __slots__ = ("_pairs",)
 
     def __init__(self, pairs: Iterable[tuple[str, Any]] | None = None) -> None:
-        # Bulk construction must never dedup - a source object (a freshly
-        # parsed file, or another OrderedObj's .items()) may legitimately
-        # contain the same key more than once (see module docstring).
+        # 一括構築では決して重複除去しない - 元のオブジェクト (パースしたての
+        # ファイルや別の OrderedObj の .items()) は正当に同じキーを複数回
+        # 含みうる (モジュールの docstring を参照)。
         self._pairs: list[list] = [[k, v] for k, v in pairs] if pairs is not None else []
 
-    # -- mapping protocol ---------------------------------------------------
+    # -- マッピングプロトコル -----------------------------------------------
     def __getitem__(self, key: str) -> Any:
         for k, v in self._pairs:
             if k == key:
@@ -83,7 +82,7 @@ class OrderedObj:
         return default
 
     def values_for(self, key: str) -> list[Any]:
-        """Every value stored under ``key``, in file order (may be empty)."""
+        """``key`` に格納されたすべての値をファイル順で返す (空の場合もある)。"""
         return [v for k, v in self._pairs if k == key]
 
     def keys(self) -> list[str]:
@@ -96,7 +95,7 @@ class OrderedObj:
         return [(k, v) for k, v in self._pairs]
 
     def append(self, key: str, value: Any) -> None:
-        """Append a pair unconditionally (allows intentional duplicates)."""
+        """ペアを無条件に追加する (意図的な重複を許す)。"""
         self._pairs.append([key, value])
 
     def insert(self, index: int, key: str, value: Any) -> None:
@@ -115,15 +114,15 @@ class OrderedObj:
 
 
 # ---------------------------------------------------------------------------
-# numbers
+# 数値
 # ---------------------------------------------------------------------------
 class Num:
-    """A JSON number that remembers the literal text it was parsed from.
+    """パース元のリテラル文字列を覚えている JSON 数値。
 
-    ``value`` is the Python ``int``/``float``. ``is_int`` records whether the
-    literal had no ``.`` / exponent (cereal distinguishes ``0`` from ``0.0``).
-    ``raw`` is the verbatim source token, or ``None`` for synthesised numbers.
-    Equality is by ``(is_int, value)`` - text form is irrelevant to meaning.
+    ``value`` は Python の ``int``/``float``。``is_int`` はリテラルに ``.`` や
+    指数部がなかったかを記録する (cereal は ``0`` と ``0.0`` を区別する)。
+    ``raw`` は元のトークンそのもので、合成した数値では ``None``。
+    等価性は ``(is_int, value)`` で判定する - 文字列表現は意味に関係しない。
     """
 
     __slots__ = ("value", "is_int", "raw")
@@ -133,7 +132,7 @@ class Num:
         self.is_int = is_int
         self.raw = raw
 
-    # -- constructors -----------------------------------------------------
+    # -- コンストラクタ ---------------------------------------------------
     @staticmethod
     def of_int(value: int, raw: str | None = None) -> "Num":
         return Num(int(value), True, raw)
@@ -142,13 +141,13 @@ class Num:
     def of_float(value: float, raw: str | None = None) -> "Num":
         return Num(float(value), False, raw)
 
-    # -- rendering ------------------------------------------------------------
+    # -- 描画 ----------------------------------------------------------------
     def render(self) -> str:
         if self.raw is not None:
             return self.raw
         return format_number(self.value, self.is_int)
 
-    # -- equality ----------------------------------------------------------
+    # -- 等価性 ------------------------------------------------------------
     def __eq__(self, other: object) -> bool:
         if isinstance(other, Num):
             return self.is_int == other.is_int and self.value == other.value
@@ -168,16 +167,16 @@ class Num:
 
 
 def format_number(value: Any, is_int: bool) -> str:
-    """Render a synthesised number the way cereal/RapidJSON would (close enough).
+    """合成した数値を cereal/RapidJSON と同じように描画する (ほぼ同等)。
 
-    Existing-file numbers are round-tripped verbatim via :class:`Num`; this is
-    only for values the toolkit creates (positions, scalar params, weights...),
-    which are simple decimals that ``repr`` renders exactly as Grisu2 does.
+    既存ファイルの数値は :class:`Num` でそのまま往復させる。これはツールキットが
+    作る値 (位置、スカラーパラメータ、重みなど) 専用で、それらは ``repr`` が
+    Grisu2 とまったく同じに描画する単純な小数である。
     """
     if is_int:
         return str(int(value))
     f = float(value)
-    if f != f:  # NaN - cereal would not emit this; guard anyway
+    if f != f:  # NaN - cereal はこれを出力しないが、念のため防御する
         raise ValueError("cannot serialise NaN")
     r = repr(f)
     if "e" in r or "E" in r:
@@ -192,15 +191,15 @@ def format_number(value: Any, is_int: bool) -> str:
 
 
 # ---------------------------------------------------------------------------
-# parsing
+# パース
 # ---------------------------------------------------------------------------
 def _pairs_hook(pairs: list[tuple[str, Any]]) -> OrderedObj:
     return OrderedObj(pairs)
 
 
 def loads(text: str) -> Any:
-    """Parse cereal-JSON text, preserving key order, duplicate keys, and
-    numeric literals."""
+    """cereal-JSON テキストをパースする。キー順、重複キー、数値リテラルを
+    保持する。"""
     return json.loads(
         text,
         object_pairs_hook=_pairs_hook,
@@ -210,7 +209,7 @@ def loads(text: str) -> Any:
 
 
 # ---------------------------------------------------------------------------
-# printing
+# 出力
 # ---------------------------------------------------------------------------
 _ESCAPES = {
     '"': '\\"',
@@ -290,7 +289,7 @@ def _render(value: Any, indent: int, out: list[str]) -> None:
 
 
 def dumps(obj: Any, newline: str = "\n") -> str:
-    """Serialise to cereal-JSON text (LF by default; no BOM, no trailing newline)."""
+    """cereal-JSON テキストにシリアライズする (既定は LF、BOM なし、末尾改行なし)。"""
     out: list[str] = []
     _render(obj, 0, out)
     text = "".join(out)
@@ -300,10 +299,10 @@ def dumps(obj: Any, newline: str = "\n") -> str:
 
 
 # ---------------------------------------------------------------------------
-# file helpers
+# ファイルヘルパー
 # ---------------------------------------------------------------------------
 def read_text(path) -> str:
-    """Read a cereal-JSON file as text with LF newlines (CRLF collapsed)."""
+    """cereal-JSON ファイルを LF 改行のテキストとして読む (CRLF は畳む)。"""
     raw = open(path, "rb").read()
     if raw[:3] == b"\xef\xbb\xbf":
         raw = raw[3:]
@@ -311,7 +310,7 @@ def read_text(path) -> str:
 
 
 def to_file_bytes(text: str) -> bytes:
-    """Encode toolkit output the way the engine writes it: UTF-8, CRLF, no BOM."""
+    """ツールキットの出力をエンジンと同じ形式でエンコードする: UTF-8、CRLF、BOM なし。"""
     return text.replace("\r\n", "\n").replace("\n", "\r\n").encode("utf-8")
 
 
@@ -320,11 +319,11 @@ def write_file(path, obj: Any) -> None:
 
 
 def self_check_roundtrip(path) -> None:
-    """Assert ``dumps(loads(text)) == text`` for a file (formatting fidelity)."""
+    """ファイルについて ``dumps(loads(text)) == text`` を検証する (書式の忠実性)。"""
     text = read_text(path)
     got = dumps(loads(text))
     if got != text:
-        # find first divergence for a useful message
+        # 分かりやすいメッセージのため最初の相違箇所を探す
         n = min(len(got), len(text))
         i = next((j for j in range(n) if got[j] != text[j]), n)
         raise AssertionError(

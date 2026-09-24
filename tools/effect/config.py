@@ -1,18 +1,18 @@
-"""``effect_config.json`` - every machine- or project-specific value the
-toolkit needs (Effekseer CUI location, install destination, ``.meta`` output),
-kept out of the code so the toolkit can be copied into another project and
-adapted by editing that one file. See ``docs/setup.md`` (``tools/effect/dist/docs/setup.md`` here) for the
-key reference.
+"""``effect_config.json`` - ツールキットが必要とするマシン固有・プロジェクト固有の
+値 (Effekseer CUI の場所、インストール先、``.meta`` 出力) をすべて持つ。
+コードから切り離してあるので、ツールキットを別プロジェクトにコピーしても
+このファイル 1 つを編集すれば合わせられる。キーの説明は ``docs/setup.md``
+(ここでは ``tools/effect/dist/docs/setup.md``) を参照。
 
-Relative paths: ``project.root`` is relative to the config file's directory
-(empty = the folder that contains ``tools/``); ``effekseer.cui_paths`` /
-``effekseer.cui_path``, ``project.effect_dir`` and ``selftest.corpus_dir`` are
-relative to the project root. An empty string means "not set".
+相対パス: ``project.root`` は設定ファイルのディレクトリからの相対
+(空 = ``tools/`` を含むフォルダ)。``effekseer.cui_paths`` /
+``effekseer.cui_path``、``project.effect_dir``、``selftest.corpus_dir`` は
+プロジェクトルートからの相対。空文字列は「未設定」を表す。
 
-``effekseer.version`` is the Effekseer version the toolkit targets and
-``effekseer.cui_paths`` maps versions to their ``Effekseer.exe`` (see
-``cli.resolve_effekseer`` for the lookup order). The older single
-``effekseer.cui_path`` and ``effekseer.verified_version`` keys still work.
+``effekseer.version`` はツールキットが対象とする Effekseer のバージョンで、
+``effekseer.cui_paths`` はバージョンからその ``Effekseer.exe`` への対応表
+(探索順は ``cli.resolve_effekseer`` 参照)。旧来の単一の
+``effekseer.cui_path`` と ``effekseer.verified_version`` キーも引き続き使える。
 """
 
 from __future__ import annotations
@@ -140,7 +140,7 @@ def get() -> EffectConfig:
 
 @contextmanager
 def override(cfg: EffectConfig):
-    """Temporarily make ``get()`` return ``cfg`` (selftest only)."""
+    """一時的に ``get()`` が ``cfg`` を返すようにする (selftest 専用)。"""
     global _active
     saved = _active
     _active = cfg

@@ -1,14 +1,14 @@
-"""tools.effect - author Effekseer .efkproj particle-effect sources without
-hand-editing raw XML, compile them via the Effekseer CUI, and install the
-result next to its textures (and, for NanamiEngine, as a ParticleFile asset).
+"""tools.effect - Effekseer の .efkproj パーティクルエフェクトの原本を生の XML を
+手で編集せずに作成し、Effekseer CUI でコンパイルして、結果をテクスチャの隣に
+(NanamiEngine では ParticleFile アセットとして) インストールする。
 
-User documentation: README.md and docs/ (tools/effect/dist/ in NanamiEngine).
+ユーザー向けドキュメント: README.md と docs/ (NanamiEngine では tools/effect/dist/)。
 """
 
 import sys
 
-# Every entry point (python -m tools.effect, tools/effect.py, selftest.py)
-# imports this package first, so the check lives only here.
+# どのエントリポイント (python -m tools.effect, tools/effect.py, selftest.py) も
+# 最初にこのパッケージを import するので、チェックはここだけに置く。
 MIN_PYTHON = (3, 10)
 
 if sys.version_info < MIN_PYTHON:

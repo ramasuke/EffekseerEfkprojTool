@@ -1,17 +1,17 @@
-"""Asset references (textures, models, materials, sounds) inside effects.
+"""エフェクト内のアセット参照 (テクスチャ、モデル、マテリアル、サウンド)。
 
-Effekseer stores every such reference as a path *relative to the file that
-holds it*: relative to the ``.efkproj`` in the source, and relative to the
-output file in a compiled ``.efkefc`` (the CUI / editor rewrites them on
-export). Three ways that goes wrong, all guarded against by the toolkit:
+Effekseer はこうした参照をすべて *それを持つファイルからの相対パス* で保存する:
+原本では ``.efkproj`` からの相対、コンパイル済み ``.efkefc`` では出力ファイルからの
+相対 (CUI / エディタが書き出し時に書き換える)。壊れ方は 3 通りあり、どれも
+ツールキットが防いでいる:
 
-1. compiling/exporting into another directory than the ``.efkproj`` leaves
-   paths that point outside the ``.efkefc``'s folder (``../OneDrive/...``);
-2. copying an ``.efkproj`` somewhere else without rewriting its paths;
-3. sample projects still carrying their author's local paths.
+1. ``.efkproj`` と別のディレクトリにコンパイル/書き出しすると、``.efkefc`` の
+   フォルダの外を指すパスが残る (``../OneDrive/...``)。
+2. パスを書き換えずに ``.efkproj`` を別の場所へコピーする。
+3. サンプルプロジェクトに作者のローカルパスが残ったままになっている。
 
-The CUI compiles all of these without an error, so ``compile`` / ``install``
-check them up front instead.
+CUI はどれもエラー無しでコンパイルしてしまうので、``compile`` / ``install`` が
+事前にチェックする。
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ def is_asset_path(text: str | None) -> bool:
 
 
 def project_asset_elems(proj: Elem) -> list[Elem]:
-    """Every leaf in an ``.efkproj`` tree whose text is an asset path."""
+    """``.efkproj`` ツリー内で、テキストがアセットパスになっている全リーフ。"""
     found: list[Elem] = []
 
     def walk(e: Elem) -> None:
@@ -46,7 +46,7 @@ def project_asset_elems(proj: Elem) -> list[Elem]:
 
 
 def missing_project_assets(proj: Elem, proj_dir: Path) -> list[str]:
-    """Asset paths (deduplicated, in file order) that don't resolve from ``proj_dir``."""
+    """``proj_dir`` から解決できないアセットパス (重複除去、ファイル内の順)。"""
     missing: list[str] = []
     for e in project_asset_elems(proj):
         if e.text not in missing and not (Path(proj_dir) / e.text).is_file():
@@ -55,7 +55,7 @@ def missing_project_assets(proj: Elem, proj_dir: Path) -> list[str]:
 
 
 def escapes(rel: str) -> bool:
-    """True for an absolute path or one that leaves its base folder (``../x``)."""
+    """絶対パス、または基準フォルダの外に出るパス (``../x``) なら True。"""
     p = rel.replace("\\", "/")
     if PurePosixPath(p).is_absolute() or (len(p) > 1 and p[1] == ":"):
         return True

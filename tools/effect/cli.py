@@ -1,11 +1,11 @@
-"""CLI subcommands for tools.effect: new-project, show, validate, add-node,
-set-params, apply, compile, upgrade, install, check-env, export.
+"""tools.effect の CLI サブコマンド: new-project, show, validate, add-node,
+set-params, apply, compile, upgrade, install, check-env, export。
 
-Nodes have no stable id in the ``.efkproj`` format (unlike ``tools/bt``'s
-per-node GUIDs), so ``--parent``/``--path`` address a node by a dot-separated
-0-based child-index path from the root, e.g. ``"1.0"`` = the root's 2nd child
-node's 1st child node. ``""`` (or ``"root"``) means the root itself - use it
-as ``--parent`` to attach a new top-level node. ``show`` prints these paths.
+``.efkproj`` 形式のノードには安定した id が無い (``tools/bt`` のノードごとの
+GUID とは違う) ので、``--parent``/``--path`` はルートからの 0 始まりの子インデックスを
+ドットでつないだパスでノードを指す。例: ``"1.0"`` = ルートの 2 番目の子ノードの
+1 番目の子ノード。``""`` (または ``"root"``) はルート自身を表し、``--parent`` に
+渡すと新しいトップレベルノードを追加できる。``show`` がこのパスを表示する。
 """
 
 from __future__ import annotations
@@ -52,13 +52,13 @@ def _resolve(arg: str) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# compact CLI-flag value parsing (shared by add-node's dedicated flags)
+# CLI フラグ用のコンパクトな値の解析 (add-node の専用フラグで共用)
 def _parse_bool(spec: str) -> bool:
     return spec.lower() == "true"
 
 
 def _parse_pva(spec: str) -> dict:
-    """``"CENTER"`` -> a fixed value; ``"MIN:CENTER:MAX"`` -> a range."""
+    """``"CENTER"`` -> 固定値、``"MIN:CENTER:MAX"`` -> 範囲。"""
     parts = spec.split(":")
     if len(parts) == 1:
         v = float(parts[0])
@@ -70,7 +70,7 @@ def _parse_pva(spec: str) -> dict:
 
 
 def _parse_color(spec: str) -> dict:
-    """``"R:G:B[:A]"``, 0-255 ints, A defaults to 255."""
+    """``"R:G:B[:A]"``、0-255 の整数。A の既定値は 255。"""
     parts = spec.split(":")
     if len(parts) not in (3, 4):
         raise CliError(f"bad color {spec!r}: expected R:G:B[:A]")
@@ -81,7 +81,7 @@ def _parse_color(spec: str) -> dict:
 
 
 def _parse_color_random(spec: str) -> dict:
-    """``"R,G,B[,A]"``, each channel itself ``CENTER`` or ``MIN:CENTER:MAX``."""
+    """``"R,G,B[,A]"``。各チャンネル自体が ``CENTER`` または ``MIN:CENTER:MAX``。"""
     channels = spec.split(",")
     if len(channels) not in (3, 4):
         raise CliError(f"bad color-random {spec!r}: expected R,G,B[,A] "
@@ -91,8 +91,8 @@ def _parse_color_random(spec: str) -> dict:
 
 
 def _parse_fade(spec: str) -> dict:
-    """``"FRAME[:START_SPEED[:END_SPEED]]"`` - the speeds are Effekseer
-    ``EasingStart``/``EasingEnd`` enums (``-30,-20,-10,0,10,20,30`` only)."""
+    """``"FRAME[:START_SPEED[:END_SPEED]]"`` - 速度は Effekseer の
+    ``EasingStart``/``EasingEnd`` 列挙値 (``-30,-20,-10,0,10,20,30`` のみ)。"""
     parts = spec.split(":")
     if not 1 <= len(parts) <= 3:
         raise CliError(f"bad fade {spec!r}: expected FRAME[:START_SPEED[:END_SPEED]]")
@@ -118,8 +118,8 @@ def _read_project(path: Path) -> Elem:
 
 
 def _warn_missing_assets_in(node: Elem, proj_path: Path) -> None:
-    """Warn (don't refuse - the file may be copied in later; `compile` refuses)
-    about texture/model/sound paths in ``node`` that don't exist yet."""
+    """``node`` 内のテクスチャ/モデル/サウンドのパスでまだ存在しないものを警告する
+    (拒否はしない - 後からファイルがコピーされるかもしれないので。`compile` は拒否する)。"""
     missing = assets.missing_project_assets(node, proj_path.parent)
     if missing:
         print(f"WARNING: {len(missing)} referenced file(s) don't exist relative to {proj_path.name} "
@@ -128,19 +128,19 @@ def _warn_missing_assets_in(node: Elem, proj_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# which Effekseer: target version (-> versions.Profile) and its CUI
+# どの Effekseer か: 対象バージョン (-> versions.Profile) とその CUI
 @dataclass(frozen=True)
 class Effekseer:
     version: str
     version_source: str
     profile: versions.Profile
-    cui: Path | None          # as configured (a 1.80 launcher is resolved when run)
+    cui: Path | None          # 設定どおり (1.80 のランチャーは実行時に解決する)
     cui_source: str | None
-    detected: str | None      # version read from the CUI's EffekseerCore.dll
+    detected: str | None      # CUI の EffekseerCore.dll から読んだバージョン
 
     @property
     def editor_version(self) -> str:
-        """The editor that will actually load files: the CUI's, when known."""
+        """実際にファイルを読み込むエディタ: 分かっていれば CUI のもの。"""
         return self.detected or self.version
 
 
@@ -154,10 +154,10 @@ def version_candidates(version_arg: str | None) -> list[tuple[str, str | None]]:
 
 
 def cui_candidates(cui_path_arg: str | None, version: str | None) -> list[tuple[str, str | None]]:
-    """``(source label, path)`` in lookup order: ``--cui-path``, ``$EFFEKSEER_CUI``,
-    ``effekseer.cui_paths`` (the entry for ``version``, then others of the same
-    version family; every entry when no version is set), then
-    ``effekseer.cui_path``."""
+    """探索順に並べた ``(取得元ラベル, パス)``: ``--cui-path``、``$EFFEKSEER_CUI``、
+    ``effekseer.cui_paths`` (``version`` のエントリ、次に同じバージョンファミリーの
+    他のもの。バージョン未指定なら全エントリ)、最後に
+    ``effekseer.cui_path``。"""
     cfg = config.get()
     out: list[tuple[str, str | None]] = [
         ("--cui-path", cui_path_arg),
@@ -173,9 +173,9 @@ def cui_candidates(cui_path_arg: str | None, version: str | None) -> list[tuple[
 
 
 def resolve_effekseer(cui_path_arg: str | None, version_arg: str | None) -> Effekseer:
-    """Target version: ``--effekseer-version``, ``$EFFEKSEER_VERSION``,
-    ``effekseer.version``; if none is set, the version of the CUI found, else
-    :data:`versions.FALLBACK_VERSION`. The CUI: see :func:`cui_candidates`."""
+    """対象バージョン: ``--effekseer-version``、``$EFFEKSEER_VERSION``、
+    ``effekseer.version`` の順。どれも無ければ見つかった CUI のバージョン、それも無ければ
+    :data:`versions.FALLBACK_VERSION`。CUI については :func:`cui_candidates` を参照。"""
     version, version_source = next(((v, label) for label, v in version_candidates(version_arg) if v),
                                    (None, None))
     cui, cui_source = next(((Path(c), label) for label, c in cui_candidates(cui_path_arg, version)
@@ -202,11 +202,11 @@ def _cui_mismatch(eff: Effekseer) -> str | None:
 
 
 def _reject_write_problems(node: Elem, label: str, eff: Effekseer, tool_version: str) -> None:
-    """Refuse to write a node carrying an Effekseer enum value the target
-    editor would crash on (see ``enums.py``), or fields the file's
-    ``ToolVersion`` makes Effekseer drop or overwrite (``versions.MIGRATIONS``).
-    Catches the ``--set``/``"set"`` escape hatch, which can otherwise put
-    anything in."""
+    """対象エディタがクラッシュする Effekseer 列挙値 (``enums.py`` 参照) や、
+    ファイルの ``ToolVersion`` のせいで Effekseer に捨てられる/上書きされるフィールド
+    (``versions.MIGRATIONS``) を持つノードの書き込みを拒否する。
+    何でも入れられてしまう ``--set``/``"set"`` の抜け道もここで
+    捕まえる。"""
     problems = enums.check_node(node, eff.profile) + versions.node_migration_problems(node, tool_version)
     if problems:
         raise CliError(f"{label}: {len(problems)} problem(s) for Effekseer {eff.version}, nothing written:\n  "
@@ -216,7 +216,7 @@ def _reject_write_problems(node: Elem, label: str, eff: Effekseer, tool_version:
 
 
 # ---------------------------------------------------------------------------
-# node-path addressing
+# ノードパスによる指定
 def resolve_node(project: Elem, path: str) -> Elem:
     root = project.require("Root")
     if path in ("", "root", "."):
@@ -238,8 +238,8 @@ def resolve_node(project: Elem, path: str) -> Elem:
 
 
 def _drawing_kind(node: Elem) -> str | None:
-    """The node's drawing kind, ``None`` for a node that draws nothing
-    (``Type`` 0). A missing ``Type``/``DrawingValues`` is a Sprite."""
+    """ノードの描画種別。何も描かないノード (``Type`` 0) なら ``None``。
+    ``Type``/``DrawingValues`` が無ければ Sprite。"""
     type_val = versions.drawing_type(node)
     if type_val == 0:
         return None
@@ -354,14 +354,14 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
-# add-node: dedicated-flag -> presets kwargs (main/most-discoverable fields;
-# anything else stays reachable via --set dotted.path=value)
+# add-node: 専用フラグ -> presets の kwargs (主要で見つけやすいフィールドのみ。
+# それ以外は --set dotted.path=value で指定できる)
 _TRIGGER_NAMES = {"none": 0, "trigger0": 1, "trigger1": 257, "trigger2": 513, "trigger3": 769,
                   "parent-removed": 2, "parent-collided": 3}
 
 
 def _parse_trigger(spec: str) -> int:
-    """A ``TriggerType``: a name from ``_TRIGGER_NAMES`` or its raw int."""
+    """``TriggerType``: ``_TRIGGER_NAMES`` の名前、またはその生の整数。"""
     key = spec.strip().lower()
     if key in _TRIGGER_NAMES:
         return _TRIGGER_NAMES[key]
@@ -575,7 +575,7 @@ def cmd_apply(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
-# compiled .efkefc introspection (see efkefc.py)
+# コンパイル済み .efkefc の中身の確認 (efkefc.py 参照)
 def _read_efkefc(path: Path) -> bytes:
     data = Path(path).read_bytes()
     try:
@@ -586,9 +586,9 @@ def _read_efkefc(path: Path) -> bytes:
 
 
 def efkefc_asset_paths(path: Path) -> list[str]:
-    """Every asset path a compiled ``.efkefc`` references (its ``INFO``
-    chunk) - the list the runtime resolves *relative to the .efkefc's own
-    directory* when the effect is loaded."""
+    """コンパイル済み ``.efkefc`` が参照する全アセットパス (``INFO``
+    チャンク) - エフェクト読み込み時にランタイムが *.efkefc 自身のディレクトリからの
+    相対* で解決するリスト。"""
     try:
         return efkefc.asset_paths(_read_efkefc(path))
     except efkefc.EfkefcError as e:
@@ -604,9 +604,9 @@ def _effect_binary_version(path: Path) -> int:
 
 
 def _warn_missing_assets(efkefc_path: Path) -> list[str]:
-    """Print a warning per referenced asset that is not present next to
-    ``efkefc_path`` (the runtime would then render that node untextured / skip
-    the model); returns the missing relative paths."""
+    """参照アセットのうち ``efkefc_path`` の隣に無いものごとに警告を出し
+    (ランタイムではそのノードがテクスチャ無しで描かれる / モデルが飛ばされる)、
+    見つからない相対パスを返す。"""
     missing = [rel for rel in efkefc_asset_paths(efkefc_path)
                if rel and not (efkefc_path.parent / rel).exists()]
     if missing:
@@ -637,10 +637,10 @@ def cmd_compile(args: argparse.Namespace) -> int:
     in_path = _resolve(args.file)
     out_path = _resolve(args.out) if args.out else in_path.with_suffix(".efkefc")
     if out_path.resolve().parent != in_path.resolve().parent:
-        # The CUI stores every ColorTexture/Model/Wave path *relative to the
-        # output file*, so compiling into another folder turns "Texture/x.png"
-        # into "../<somewhere>/Texture/x.png" - a path that breaks as soon as
-        # the .efkefc is moved or shipped.
+        # CUI は ColorTexture/Model/Wave のパスをすべて *出力ファイルからの相対* で
+        # 保存するので、別フォルダへコンパイルすると "Texture/x.png" が
+        # "../<どこか>/Texture/x.png" になり、.efkefc を移動したり配布したり
+        # した途端に壊れる。
         raise CliError(f"--out must be in the same folder as {in_path.name}: the CUI rewrites the "
                        "effect's texture/model paths relative to the output folder, so they would "
                        "point outside it. Compile next to the .efkproj and use `install --dest` to "
@@ -653,8 +653,8 @@ def cmd_compile(args: argparse.Namespace) -> int:
 
 
 def _preflight_cui(in_path: Path, args: argparse.Namespace, verb: str) -> tuple[Effekseer, Elem]:
-    """Everything ``compile``/``upgrade`` refuse before running the CUI (which
-    itself accepts all of it without an error)."""
+    """``compile``/``upgrade`` が CUI を実行する前に拒否するものすべて (CUI 自体は
+    どれもエラー無しで受け付けてしまう)。"""
     proj = _read_project(in_path)
     missing = assets.missing_project_assets(proj, in_path.parent)
     if missing:
@@ -676,8 +676,8 @@ def _preflight_cui(in_path: Path, args: argparse.Namespace, verb: str) -> tuple[
 
 
 def _run_cui(eff: Effekseer, in_path: Path, out_path: Path) -> int:
-    """Run the CUI ``-in in_path -o out_path``; returns the output's binary
-    version after checking it is the one ``eff`` writes."""
+    """CUI を ``-in in_path -o out_path`` で実行し、出力のバイナリバージョンが
+    ``eff`` の書くものであることを確認してから返す。"""
     if out_path.exists():
         out_path.unlink()
     result = subprocess.run(
@@ -702,9 +702,9 @@ def _run_cui(eff: Effekseer, in_path: Path, out_path: Path) -> int:
 
 
 def cmd_upgrade(args: argparse.Namespace) -> int:
-    """Rewrite an ``.efkproj`` in the target editor's native format by letting
-    that editor migrate it: compile to a scratch ``.efkefc`` next to it and
-    keep the project XML the CUI stores in its ``EDIT`` chunk."""
+    """``.efkproj`` を対象エディタ自身にマイグレーションさせて、そのエディタの
+    ネイティブ形式に書き直す: 隣に一時的な ``.efkefc`` をコンパイルし、CUI が
+    ``EDIT`` チャンクに保存したプロジェクト XML を採用する。"""
     in_path = _resolve(args.file)
     out_path = _resolve(args.out) if args.out else in_path
     if out_path.resolve().parent != in_path.resolve().parent:
@@ -731,10 +731,10 @@ def cmd_upgrade(args: argparse.Namespace) -> int:
 
 
 def _plan_asset_copies(efkefc_src: Path, dest: Path) -> list[tuple[Path, Path]]:
-    """``(from, to)`` for every file ``efkefc_src`` references that has to be
-    copied next to ``dest``; raises (before anything is copied) when a path
-    points outside the effect's folder, a file can't be found, or a different
-    file with the same name is already installed."""
+    """``efkefc_src`` が参照するファイルのうち ``dest`` の隣へコピーが必要なもの
+    それぞれの ``(from, to)``。パスがエフェクトのフォルダ外を指す、ファイルが
+    見つからない、同名の別ファイルがすでにインストール済み、のいずれかなら
+    (何もコピーする前に) 例外を投げる。"""
     refs = list(dict.fromkeys(r for r in efkefc_asset_paths(efkefc_src) if r))
     outside = [r for r in refs if assets.escapes(r)]
     if outside:
@@ -768,8 +768,8 @@ def _plan_asset_copies(efkefc_src: Path, dest: Path) -> list[tuple[Path, Path]]:
 
 
 def _rebased_project(project_src: Path, efkefc_src: Path, dest: Path, source_dest: Path) -> Elem:
-    """``project_src`` with every asset path rewritten to point, from
-    ``source_dest``'s folder, at the copy installed next to ``dest``."""
+    """``project_src`` の全アセットパスを、``source_dest`` のフォルダから見て
+    ``dest`` の隣にインストールしたコピーを指すように書き換えたもの。"""
     proj = _read_project(project_src)
     missing = assets.missing_project_assets(proj, project_src.parent)
     if missing:
@@ -779,7 +779,7 @@ def _rebased_project(project_src: Path, efkefc_src: Path, dest: Path, source_des
         for e in assets.project_asset_elems(proj):
             rel = assets.relpath_posix(project_src.parent / e.text, efkefc_src.parent)
             e.text = assets.relpath_posix(dest.parent / rel, source_dest.parent)
-    except ValueError as err:  # os.path.relpath across drives
+    except ValueError as err:  # ドライブをまたぐ os.path.relpath
         raise CliError(f"can't express {project_src.name}'s asset paths relative to {source_dest.parent} "
                        f"({err}); nothing installed") from err
     return proj
@@ -835,10 +835,9 @@ def cmd_install(args: argparse.Namespace) -> int:
     name = dest.stem
     meta_path = dest.with_suffix(dest.suffix + ".meta")
     if meta_path.exists():
-        # Re-installing over an asset that is already wired into prefabs /
-        # components: keep its .meta (and so its GUID) untouched so every
-        # existing reference stays valid. Only a brand-new asset gets a
-        # freshly minted GUID.
+        # すでにプレハブ / コンポーネントから参照されているアセットへの再インストール:
+        # .meta (つまり GUID) には手を付けず、既存の参照をすべて有効なままにする。
+        # 新規アセットだけに新しい GUID を振る。
         guid = meta_mod.read_meta(meta_path)["guid"]
         print(f"installed {dest}")
         print(f"          {meta_path.name} (existing, kept)")
@@ -984,7 +983,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     sp.add_argument("--division", default=None, metavar="N (circle)")
     sp.add_argument("--angle-start", default=None, metavar="CENTER|MIN:CENTER:MAX (circle)")
     sp.add_argument("--angle-end", default=None, metavar="CENTER|MIN:CENTER:MAX (circle)")
-    # kind-specific
+    # 種別ごと
     sp.add_argument("--billboard", default=None, metavar="N (sprite)")
     sp.add_argument("--color", default=None, metavar="R:G:B[:A] (sprite/ribbon/ring/model)")
     sp.add_argument("--color-random", default=None,

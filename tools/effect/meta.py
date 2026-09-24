@@ -1,15 +1,14 @@
-"""``.efkefc.meta`` sidecar files.
+"""``.efkefc.meta`` サイドカーファイル。
 
-A ``.meta`` is a cereal-JSON ``std::shared_ptr<AssetBase>`` holding the
-``ParticleFile`` asset: a stable ``guid_`` (what a component's particle-effect
-field references) plus ``contentPath_`` back to the compiled ``.efkefc``.
-Written by ``File::OnSave()`` in the engine; reproduced here so ``install``
-yields an asset the editor/prefabs can bind to immediately.
+``.meta`` は ``ParticleFile`` アセットを持つ cereal-JSON の ``std::shared_ptr<AssetBase>``:
+安定した ``guid_`` (コンポーネントのパーティクルエフェクトのフィールドが参照するもの)
+と、コンパイル済み ``.efkefc`` を指す ``contentPath_``。エンジンでは
+``File::OnSave()`` が書き出す。ここで同じものを作るので、``install`` の結果は
+すぐにエディタ/プレハブから紐付けられるアセットになる。
 
-Thin binding of the generic :mod:`tools.common.meta_base` codec for the
-``ParticleFile`` asset type - see that module for the format notes, and
-``tools/bt/meta.py`` / ``tools/scene/meta.py`` for the same pattern applied
-to other asset types.
+汎用の :mod:`tools.common.meta_base` コーデックを ``ParticleFile`` アセット型に
+薄く結び付けたもの - 形式の説明はそのモジュールを、他のアセット型に同じパターンを
+適用した例は ``tools/bt/meta.py`` / ``tools/scene/meta.py`` を参照。
 """
 
 from __future__ import annotations
@@ -33,8 +32,8 @@ def _spec() -> MetaSpec:
         meta_ext=META_EXT,
         default_dir=cfg.effect_dir_rel,
         outer_class_version=1,
-        # ParticleFile::save/load base_class<>()s both AssetBase and
-        # LifeCycleCallback::IEnablableAsset -> two empty valueN wrappers, not one.
+        # ParticleFile::save/load は AssetBase と LifeCycleCallback::IEnablableAsset の
+        # 両方を base_class<>() する -> 空の valueN ラッパーは 1 つではなく 2 つ。
         base_class_count=2,
     )
 
@@ -43,14 +42,14 @@ mint_guid = _base.mint_guid
 
 
 def content_path_for(name: str, target_dir: Path, repo_root: Path) -> str:
-    """Match Effekseer's own ``contentPath_`` convention for ``.efkefc`` assets.
+    """``.efkefc`` アセットについての Effekseer 独自の ``contentPath_`` 規則に合わせる。
 
-    Unlike the other thin-proxy asset types (see ``meta_base.content_path_for``'s
-    "forward slash before the file" convention, itself not fully consistent
-    across real ``.prefab`` files either), every real nested ``.efkefc.meta``
-    checked in this repo (``tktk01/fireSpark``, ``MAGICALxSPIRAL/Salamander11``,
-    ``tktk2/Gun6``) uses an **all-backslash** path with no exception - so this
-    binding doesn't delegate to the generic fallback.
+    他の薄いプロキシのアセット型 (``meta_base.content_path_for`` の「ファイル名の
+    直前はスラッシュ」規則。これも実際の ``.prefab`` では完全には一貫していない) と
+    違い、このリポジトリで確認した実際のネストした ``.efkefc.meta``
+    (``tktk01/fireBall``、``MAGICALxSPIRAL/Salamander11``、``tktk2/Gun6``) は例外なく
+    **すべてバックスラッシュ** のパスを使っている - なのでこのバインディングは
+    汎用のフォールバックに委ねない。
     """
     spec = _spec()
     for sib in sorted(target_dir.glob("*" + META_EXT)):

@@ -1,19 +1,19 @@
-""".meta sidecar codec for "thin proxy" ``AssetBase``-derived asset types.
+"""``AssetBase`` 派生の "thin proxy" アセット型用の .meta サイドカーコーデック。
 
-A ``.meta`` is a cereal-JSON ``std::shared_ptr<AssetBase>`` holding one asset
-object: a stable ``guid_`` (what other files reference this asset by) plus
-``contentPath_`` pointing back at the sibling data file. Written by
-``File::OnSave()`` in the engine.
+``.meta`` は1つのアセットオブジェクトを持つ cereal-JSON の
+``std::shared_ptr<AssetBase>`` で、安定した ``guid_`` (他のファイルがこのアセットを
+参照するためのもの) と、兄弟のデータファイルを指す ``contentPath_`` を持つ。
+エンジンの ``File::OnSave()`` が書き出す。
 
-This module is generic over the *thin proxy* asset family - ``EnemyBehaviourFile``,
-``SceneFile``, ``PrefabGameObjectFile`` - where the ``.meta`` holds only
-``contentPath_``/``guid_`` and the real payload lives in the separate data file.
-It does **not** generalise to "fat" ``ScriptableObject``-derived assets (e.g.
-``SwordManInitStatus``), which serialise their entire payload inline in the
-``.meta`` with an empty sibling data file - a different asset family entirely.
+このモジュールは *thin proxy* アセット群 - ``EnemyBehaviourFile``、
+``SceneFile``、``PrefabGameObjectFile`` - に対して汎用で、これらの ``.meta`` は
+``contentPath_``/``guid_`` だけを持ち、実データは別のデータファイルにある。
+``ScriptableObject`` 派生の "fat" アセット (例: ``SwordManInitStatus``) には
+**適用できない**。それらはペイロード全体を ``.meta`` 内にインラインで
+シリアライズし、兄弟のデータファイルは空 - まったく別のアセット群である。
 
-Each thin-proxy asset type is described by a :class:`MetaSpec`; callers bind one
-per asset type (see ``tools/bt/meta.py`` for the ``EnemyBehaviourFile`` binding).
+thin proxy の各アセット型は :class:`MetaSpec` で記述する。呼び出し側がアセット型
+ごとに1つ結び付ける (``EnemyBehaviourFile`` の結び付けは ``tools/bt/meta.py`` を参照)。
 """
 
 from __future__ import annotations
@@ -24,24 +24,24 @@ from pathlib import Path
 
 from .cereal_json import Num, OrderedObj, dumps, loads, read_text, to_file_bytes
 
-# First shared-ptr id / first polymorphic type id cereal ever allocates - a
-# .meta file only ever holds this one object, so the id is always the same.
+# cereal が最初に割り当てる shared-ptr id / polymorphic 型 id - .meta ファイルは
+# このオブジェクト1つしか持たないので、id は常に同じ。
 _ID = 0x80000001
 
 
 @dataclass(frozen=True)
 class MetaSpec:
-    asset_fqn: str            # polymorphic_name, e.g. "NanamiEngine::Module::Asset::SceneFile"
-    data_ext: str              # e.g. ".scene"
-    meta_ext: str              # e.g. ".scene.meta"
-    default_dir: str           # fallback content dir, e.g. "Assets/Scene"
-    outer_class_version: int = 0  # the asset class's own CEREAL_CLASS_VERSION
-    # Number of empty cereal::base_class<> archive() calls the concrete class's
-    # save()/load() makes before its own CEREAL_NVP fields - one "valueN" block
-    # per base class serialized ahead of contentPath_/guid_. Most thin-proxy
-    # assets only base_class<AssetBase>() (1); a type that also base_class<>()s
-    # a second interface (e.g. ParticleFile also serializing IEnablableAsset)
-    # needs 2. Check the class's save()/load() template if unsure.
+    asset_fqn: str            # polymorphic_name。例: "NanamiEngine::Module::Asset::SceneFile"
+    data_ext: str              # 例: ".scene"
+    meta_ext: str              # 例: ".scene.meta"
+    default_dir: str           # 代替のコンテンツディレクトリ。例: "Assets/Scene"
+    outer_class_version: int = 0  # アセットクラス自身の CEREAL_CLASS_VERSION
+    # 具象クラスの save()/load() が自身の CEREAL_NVP フィールドより前に行う、
+    # 空の cereal::base_class<> archive() 呼び出しの数 - contentPath_/guid_ の前に
+    # シリアライズされる基底クラスごとに "valueN" ブロックが1つできる。thin proxy の
+    # 多くは base_class<AssetBase>() だけ (1)。2つ目のインターフェースも base_class<>() する
+    # 型 (例: IEnablableAsset もシリアライズする ParticleFile) は 2 が必要。
+    # 不明ならそのクラスの save()/load() テンプレートを確認すること。
     base_class_count: int = 1
 
 
@@ -50,10 +50,10 @@ def mint_guid() -> str:
 
 
 def content_path_for(spec: MetaSpec, name: str, target_dir: Path, repo_root: Path) -> str:
-    """Match the sibling ``.meta`` separator convention, or fall back to default.
+    """兄弟の ``.meta`` の区切り文字の慣例に合わせる。なければ既定値にフォールバックする。
 
-    Observed form: backslash-separated directory, forward slash before the file,
-    e.g. ``Assets\\Data\\EnemyBehaviour/Hyena.enemyBehaviourData``.
+    観測された形式: ディレクトリはバックスラッシュ区切り、ファイルの前だけスラッシュ。
+    例: ``Assets\\Data\\EnemyBehaviour/Hyena.enemyBehaviourData``。
     """
     for sib in sorted(target_dir.glob("*" + spec.meta_ext)):
         try:

@@ -1,13 +1,12 @@
-"""``export`` - copy the distributable subset of the toolkit into another
-directory (the public EffekseerEfkprojTool repository's working tree).
+"""``export`` - ツールキットのうち配布する部分を別ディレクトリ (公開リポジトリ
+EffekseerEfkprojTool の作業ツリー) にコピーする。
 
-NanamiEngine stays the source of truth: edit here, export, then commit/push in
-the destination. ``MANIFEST`` is the single list of what ships; the
-project-specific ``effect_config.json`` is replaced by ``dist/effect_config.json``
-(no personal paths, ``.meta`` output off) and ``dist/`` also provides the
-repository's user documentation (README.md, docs/*.md), LICENSE and .gitignore.
-``tools/effect/README.md`` is this project's internal reference and is not
-shipped.
+正本は NanamiEngine のまま: ここで編集して export し、コピー先で commit/push する。
+配布物の一覧は ``MANIFEST`` だけ。プロジェクト固有の ``effect_config.json`` は
+``dist/effect_config.json`` (個人的なパス無し、``.meta`` 出力オフ) に置き換わり、
+``dist/`` はリポジトリのユーザー向けドキュメント (README.md、docs/*.md)、LICENSE、
+.gitignore も提供する。``tools/effect/README.md`` はこのプロジェクト内部の
+リファレンスなので配布しない。
 """
 
 from __future__ import annotations
@@ -18,7 +17,7 @@ from pathlib import Path
 _SRC_ROOT = Path(__file__).resolve().parents[2]
 _DIST = "tools/effect/dist"
 
-# (path in the exported tree, source path relative to this project's root)
+# (書き出し先ツリーでのパス、このプロジェクトのルートからの元パス)
 MANIFEST: list[tuple[str, str]] = [
     ("README.md", f"{_DIST}/README.md"),
     *[(f"docs/{n}.md", f"{_DIST}/docs/{n}.md") for n in (

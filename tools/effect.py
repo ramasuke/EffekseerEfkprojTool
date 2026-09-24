@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Shim so ``python tools/effect.py ...`` works the same as ``python -m tools.effect ...``."""
+"""``python tools/effect.py ...`` を ``python -m tools.effect ...`` と同じように動かすためのシム。"""
 
 import sys
 from pathlib import Path

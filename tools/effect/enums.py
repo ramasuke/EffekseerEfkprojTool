@@ -1,38 +1,37 @@
-"""Effekseer ``Enum<T>``-typed field domains, per Effekseer version family
-(1.5x, 1.6x, 1.7x, 1.80.x), and a checker for ``.efkproj`` node trees.
+"""Effekseer の ``Enum<T>`` 型フィールドの値域を Effekseer のバージョンファミリー
+(1.5x、1.6x、1.7x、1.80.x) ごとに持ち、``.efkproj`` のノードツリーをチェックする。
 
-Why this exists: Effekseer's editor loads every ``Value.Enum<T>`` leaf with a
-bare ``int.TryParse -> SetValue`` (``Data/IO.cs``, no range check), and the
-GUI's ``Effekseer.GUI.Component.Enum.Update()`` then does
-``enums.Where(v == selected).FirstOrDefault().Item2`` - for a value that is not
-one of the enum's members ``FirstOrDefault()`` is null and the editor dies with
-a ``NullReferenceException`` the moment a panel showing that field is drawn
-(e.g. the "Basic Render Settings" dock for ``FadeIn``/``FadeOut``). The CUI
-compiler does **not** catch this - it feeds the raw int straight into the
-easing formula and exits 0 - so a bad value only surfaces when somebody opens
-the ``.efkproj`` in the GUI. This module is the toolkit-side guard.
+これがある理由: Effekseer のエディタは ``Value.Enum<T>`` のリーフをすべて素の
+``int.TryParse -> SetValue`` で読み込み (``Data/IO.cs``、範囲チェック無し)、GUI の
+``Effekseer.GUI.Component.Enum.Update()`` はその後
+``enums.Where(v == selected).FirstOrDefault().Item2`` を実行する - 列挙のメンバーで
+ない値だと ``FirstOrDefault()`` が null になり、そのフィールドを表示するパネルが
+描画された瞬間にエディタが ``NullReferenceException`` で落ちる (例: ``FadeIn``/
+``FadeOut`` の "Basic Render Settings" ドック)。CUI コンパイラはこれを
+**検出しない** - 生の整数をそのままイージング式に渡して 0 で終了する - ので、
+不正な値は誰かが GUI で ``.efkproj`` を開いて初めて表面化する。このモジュールは
+ツールキット側のガード。
 
-Every domain below was read from the 1.7.3.0 sources
+以下の値域はすべて 1.7.3.0 のソース
 (``Dev/Editor/EffekseerCore/Data/{Define,RendererCommonValues,RendererValues,
 CommonValues,LocationValues,RotationValues,ScaleValues,
-GenerationLocationValues,SoundValues}.cs``) and checked for false positives
-against the 310-file real sample corpus this toolkit was built from (see
-``selftest.stage_corpus_sweep``). It is deliberately *not* a full schema:
-only fields the toolkit itself writes (or that share their leaf tag with one)
-are listed, and a leaf whose text is not an integer is never flagged.
+GenerationLocationValues,SoundValues}.cs``) から読み取り、このツールキットの元に
+なった 310 ファイルの実サンプルコーパスに対して誤検出が無いことを確認した
+(``selftest.stage_corpus_sweep`` 参照)。あえて完全なスキーマには *していない*:
+ツールキット自身が書くフィールド (またはそれとリーフのタグが同じもの) だけを
+載せ、テキストが整数でないリーフは決して検出しない。
 
-The other families' tables were checked against every release with a
-Windows tool (1.50RC1 ... 1.80.7) by walking ``Effekseer.Data.Node``'s
-properties by reflection in each release's ``EffekseerCore.dll`` and listing
-each ``Value.Enum<T>``'s members - which is exactly the list the GUI's
-``Enum.Initialize`` offers. All releases of a family have identical domains,
-and each table below matches its family's DLLs for every suffix present there.
-Later families only *add* members (1.80: ``Billboard=4``, ``Wrap=2``, ...;
-1.7: ``FadeOutType=2``, ``Gradient`` colors, ``RotationValues.Type=6``,
-``TriggerParam``; 1.6: more Location/Scaling types), so a value valid only in
-a newer family is a violation when targeting an older one - that editor
-crashes on it. One member was *renumbered*: ``TextureUVType`` is
-Strech=0/Tile=1 up to 1.7 and Strech=0/TilePerParticle=1/Tile=2 in 1.80.
+他のファミリーの表は、Windows 版ツールのある全リリース (1.50RC1 ... 1.80.7) で、
+各リリースの ``EffekseerCore.dll`` にある ``Effekseer.Data.Node`` のプロパティを
+リフレクションでたどり、``Value.Enum<T>`` ごとのメンバーを列挙して確認した -
+これは GUI の ``Enum.Initialize`` が提示するリストそのもの。同じファミリーの全リリースは
+値域が同一で、以下の各表はそのファミリーの DLL に存在するすべての接尾辞について
+一致する。新しいファミリーはメンバーを *追加* するだけなので (1.80: ``Billboard=4``、
+``Wrap=2``、...; 1.7: ``FadeOutType=2``、``Gradient`` 色、``RotationValues.Type=6``、
+``TriggerParam``; 1.6: Location/Scaling の種類の追加)、新しいファミリーでしか有効で
+ない値は古いファミリーを対象にしたとき違反になる - そのエディタが落ちる。1 つだけ
+*番号が振り直された* メンバーがある: ``TextureUVType`` は 1.7 までは
+Strech=0/Tile=1、1.80 では Strech=0/TilePerParticle=1/Tile=2。
 """
 
 from __future__ import annotations
@@ -40,16 +39,16 @@ from __future__ import annotations
 from .model import Elem
 from .versions import Profile, walk_nodes
 
-# EasingStart / EasingEnd (Define.cs): negative = *Slowly{1,2,3}, positive =
-# *Rapidly{1,2,3}, 0 = Start/End (linear). Used by FadeIn/FadeOut and every
-# Easing/SingleEasing/AxisEasing/*_Easing block's StartSpeed/EndSpeed.
+# EasingStart / EasingEnd (Define.cs): 負 = *Slowly{1,2,3}、正 =
+# *Rapidly{1,2,3}、0 = Start/End (線形)。FadeIn/FadeOut と、すべての
+# Easing/SingleEasing/AxisEasing/*_Easing ブロックの StartSpeed/EndSpeed で使う。
 EASING_SPEEDS: tuple[int, ...] = (-30, -20, -10, 0, 10, 20, 30)
 
 
 def easing_speed(value, what: str = "StartSpeed/EndSpeed") -> int:
-    """Coerce ``value`` to one of :data:`EASING_SPEEDS` or raise ``ValueError``.
+    """``value`` を :data:`EASING_SPEEDS` のいずれかに変換する。できなければ ``ValueError``。
 
-    Accepts ints, integral floats (``30.0``) and numeric strings (``"-30"``).
+    整数、整数値の浮動小数 (``30.0``)、数値文字列 (``"-30"``) を受け付ける。
     """
     try:
         f = float(value)
@@ -69,12 +68,12 @@ def _r(*values: int) -> frozenset[int]:
     return frozenset(values)
 
 
-# (tag-path suffix, relative to <Node>) -> allowed ints. A rule applies to a
-# leaf whose tag path *ends with* the suffix (longest matching suffix wins),
-# so ("StartSpeed",) covers FadeIn/StartSpeed, Easing/StartSpeed,
-# ColorAll_Easing/StartSpeed, ... while ("Sprite", "Color") only covers
-# DrawingValues/Sprite/Color. Comments name the Effekseer enum each domain
-# was read from.
+# (タグパスの接尾辞、<Node> からの相対) -> 許される整数。ルールはタグパスが
+# その接尾辞で *終わる* リーフに適用される (最長一致の接尾辞が優先) ので、
+# ("StartSpeed",) は FadeIn/StartSpeed、Easing/StartSpeed、
+# ColorAll_Easing/StartSpeed、... をカバーし、("Sprite", "Color") は
+# DrawingValues/Sprite/Color だけをカバーする。コメントは各値域の読み取り元の
+# Effekseer 列挙型の名前。
 ENUM_DOMAINS_17: dict[tuple[str, ...], frozenset[int]] = {
     ("StartSpeed",): frozenset(EASING_SPEEDS),                 # EasingStart
     ("EndSpeed",): frozenset(EASING_SPEEDS),                   # EasingEnd
@@ -92,8 +91,8 @@ ENUM_DOMAINS_17: dict[tuple[str, ...], frozenset[int]] = {
     ("UVAnimation", "LoopType"): _r(0, 1, 2),                  # LoopType
     ("RendererCommonValues", "ColorInheritType"): _r(0, 1, 2, 3),  # ParentEffectType
     ("RendererCommonValues", "Material"): _r(0, 6, 7, 128),    # MaterialType
-    # DrawingValues + per-kind blocks (RendererValues.cs)
-    ("DrawingValues", "Type"): _r(0, 2, 3, 4, 5, 6),           # ParamaterType (1 unused)
+    # DrawingValues + 種別ごとのブロック (RendererValues.cs)
+    ("DrawingValues", "Type"): _r(0, 2, 3, 4, 5, 6),           # ParamaterType (1 は未使用)
     ("Sprite", "Billboard"): _r(0, 1, 2, 3),                   # BillboardType
     ("Ring", "Billboard"): _r(0, 1, 2, 3),
     ("Model", "Billboard"): _r(0, 1, 2, 3),
@@ -114,7 +113,7 @@ ENUM_DOMAINS_17: dict[tuple[str, ...], frozenset[int]] = {
     ("Ring", "InnerColor"): _r(0, 1, 2),
     ("DrawingValues", "Model", "Color"): _r(0, 1, 2, 3, 4),    # StandardColorType
     ("DrawingValues", "Model", "Culling"): _r(0, 1, 2),        # CullingValues
-    # transform / generation blocks
+    # トランスフォーム / 生成ブロック
     ("LocationValues", "Type"): _r(0, 1, 2, 3, 4, 5),          # LocationValues.ParamaterType
     ("RotationValues", "Type"): _r(0, 1, 2, 3, 4, 5, 6),       # RotationValues.ParamaterType
     ("ScalingValues", "Type"): _r(0, 1, 2, 3, 4, 5, 6),        # ScaleValues.ParamaterType
@@ -127,7 +126,7 @@ ENUM_DOMAINS_17: dict[tuple[str, ...], frozenset[int]] = {
     ("CommonValues", "ScaleEffectType"): _r(0, 1, 2, 3),
     ("SoundValues", "Type"): _r(0, 1),                         # SoundValues.ParamaterType
     ("Sound", "PanType"): _r(0, 1),                            # ParamaterPanType
-    ("TriggerParam", "ToStartGeneration"): _r(0, 1, 257, 513, 769),  # TriggerType (None, Trigger0-3)
+    ("TriggerParam", "ToStartGeneration"): _r(0, 1, 257, 513, 769),  # TriggerType (None、Trigger0-3)
     ("TriggerParam", "ToStopGeneration"): _r(0, 1, 257, 513, 769),
     ("TriggerParam", "ToRemove"): _r(0, 1, 257, 513, 769),
     ("DrawingValues", "TextureUVType", "Type"): _r(0, 1),      # TextureUVType (Strech/Tile)
@@ -152,7 +151,7 @@ _ADDED_IN_180: dict[tuple[str, ...], frozenset[int]] = {
     ("CommonValues", "Generation", "ToStopGeneration"): _TRIGGER_TYPE_180,
     ("CommonValues", "Generation", "Trigger"): _TRIGGER_TYPE_180,
     ("CommonValues", "Removal", "TriggerToRemove"): _TRIGGER_TYPE_180,
-    ("DrawingValues", "TextureUVType", "Type"): _r(0, 1, 2),   # TilePerParticle=1, Tile renumbered to 2
+    ("DrawingValues", "TextureUVType", "Type"): _r(0, 1, 2),   # TilePerParticle=1、Tile は 2 に番号変更
     ("DrawingValues", "Model", "ModelReference"): _r(0, 1, 2),  # + ExternalModel
     ("GenerationLocationValues", "Model", "ModelReference"): _r(0, 1, 2),
     ("GenerationLocationValues", "Model", "Coordinate"): _r(0, 1),  # ModelCoordinateType
@@ -175,16 +174,16 @@ _ADDED_IN_180: dict[tuple[str, ...], frozenset[int]] = {
 }
 ENUM_DOMAINS_180: dict[tuple[str, ...], frozenset[int]] = {**ENUM_DOMAINS_17, **_ADDED_IN_180}
 
-# 1.6x (1.60-1.62e): no TriggerParam yet, fewer members in these enums.
+# 1.6x (1.60-1.62e): TriggerParam はまだ無く、これらの列挙のメンバーも少ない。
 ENUM_DOMAINS_16: dict[tuple[str, ...], frozenset[int]] = {
     **{k: v for k, v in ENUM_DOMAINS_17.items() if k[0] != "TriggerParam"},
-    ("RendererCommonValues", "FadeOutType"): _r(0, 1),         # no FadeOutMethod 2
-    ("Sprite", "ColorAll"): _r(0, 1, 2, 3),                    # StandardColorType without Gradient
+    ("RendererCommonValues", "FadeOutType"): _r(0, 1),         # FadeOutMethod 2 が無い
+    ("Sprite", "ColorAll"): _r(0, 1, 2, 3),                    # Gradient の無い StandardColorType
     ("DrawingValues", "Model", "Color"): _r(0, 1, 2, 3),
-    ("RotationValues", "Type"): _r(0, 1, 2, 3, 4, 5),          # no RotateToViewpoint
+    ("RotationValues", "Type"): _r(0, 1, 2, 3, 4, 5),          # RotateToViewpoint が無い
 }
 
-# 1.5x (1.50RC1-1.51): additionally no ModelReference, fewer location/scale types.
+# 1.5x (1.50RC1-1.51): さらに ModelReference が無く、location/scale の種類も少ない。
 ENUM_DOMAINS_15: dict[tuple[str, ...], frozenset[int]] = {
     **{k: v for k, v in ENUM_DOMAINS_16.items() if k[-1] != "ModelReference"},
     ("LocationValues", "Type"): _r(0, 1, 2, 3),
@@ -211,9 +210,9 @@ def _domain_for(path: tuple[str, ...], domains: dict[tuple[str, ...], frozenset[
 
 
 def check_node(node: Elem, profile: Profile) -> list[str]:
-    """Return one message per enum-domain violation directly under ``node``
-    for the Effekseer version ``profile`` targets (child ``<Node>``s under
-    ``<Children>`` are *not* descended into - see :func:`check_project`).
+    """``profile`` が対象とする Effekseer バージョンについて、``node`` 直下の
+    列挙値域違反ごとに 1 つメッセージを返す (``<Children>`` 下の子 ``<Node>`` には
+    降りない - :func:`check_project` 参照)。
     """
     domains = domains_for(profile)
     problems: list[str] = []
@@ -243,9 +242,9 @@ def check_node(node: Elem, profile: Profile) -> list[str]:
 
 
 def check_project(project: Elem, profile: Profile) -> list[str]:
-    """Run :func:`check_node` over every node of an ``<EffekseerProject>``;
-    each message is prefixed with the node's ``[index.path]`` (same addressing
-    as ``show``/``--parent``).
+    """``<EffekseerProject>`` の全ノードに :func:`check_node` を実行する。
+    各メッセージの先頭にはノードの ``[index.path]`` が付く (``show``/``--parent`` と
+    同じ指定方式)。
     """
     return [f"{label}: {msg}" for _, label, node in walk_nodes(project)
             for msg in check_node(node, profile)]

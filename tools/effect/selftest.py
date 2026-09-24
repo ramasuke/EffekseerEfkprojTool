@@ -1,54 +1,53 @@
-"""Self-test / correctness gate for tools.effect.
+"""tools.effect のセルフテスト / 正しさのゲート。
 
-Run:  python tools/effect/selftest.py         (from repo root)
-      python -m tools.effect selftest
+実行:  python tools/effect/selftest.py         (リポジトリルートから)
+       python -m tools.effect selftest
 
-Exit 0 = all good, 1 = failure. No third-party dependencies.
+終了コード 0 = すべて OK、1 = 失敗。サードパーティ依存無し。
 
-Stages:
-  1. xmlio formatting fidelity: serialize(parse(text)) == text for every real
-     fixture (copied from the AndrewFM01 samples this toolkit was built from).
-  2. presets/model round trip: build a tree purely via presets.py (no hand
-     XML), parse -> serialize -> reparse, assert structurally stable.
-  3. .meta round trip against real, already-shipped ParticleFile assets
-     (proves the base_class_count=2 fix in tools/common/meta_base.py holds).
-  4. install() path-convention check against a real nested asset.
-  5. best-effort CUI compile: runs once per Effekseer CUI found on this
-     machine (every effekseer.cui_paths entry, plus the one the target version
-     resolves to); compiles a fixture and presets-built trees, checks exit 0,
-     the EFKE container and the binary version that Effekseer version writes.
-     Skipped elsewhere.
-  6. Effekseer enum domains (enums.py): out-of-range easing speeds are
-     rejected at build time and by `validate`, pva() per-axis blocks come out
-     with the capitalised <Center>/<Max>/<Min> Effekseer actually reads, and
-     `install` keeps an existing asset's GUID.
-  7. best-effort corpus sweep: every real .efkproj under $EFFEKSEER_CORPUS
-     (default: selftest.corpus_dir in effect_config.json) must produce zero
-     enum-domain violations for both Effekseer 1.7 and 1.80, and zero
-     CommonValues layout problems - the false-positive guard for enums.py's
-     tables. The editor-written EDIT chunks of every shipped .efkefc are swept
-     the same way (with the profile of the editor that saved them).
-  8. effect_config.json loading (defaults, relative paths, JSON errors,
-     meta.enabled=false install) and `export` (manifest complete, no
-     user-profile paths, distributed config has no CUI path).
-  9. texture/model references: validate/compile refuse missing files and
-     --out in another folder; install copies referenced files next to --dest,
-     rebases the --project copy, refuses missing / conflicting / ../ refs; every
-     real _Source/ .efkproj resolves.
- 10. Effekseer versions (versions.py / efkefc.py): ToolVersion parsing, the
-     per-file migration rules (versions.MIGRATIONS) and their guards,
-     per-family enum domains, version/CUI resolution (cui_paths, CUI version
-     detection, mismatch refusal), INFO chunk layouts (string lists vs
-     dependency list) and install's project.runtime_version guard.
- 11. best-effort Effekseer 1.80 ground truth: with a 1.80 CUI, compile
-     presets-built trees under several ToolVersions and decode the EDIT
-     chunk: every value Effekseer drops is caught by versions.MIGRATIONS,
-     presets' v180 CommonValues matches what 1.80 itself migrates to, 1.80-only
-     enum values survive, and `upgrade` produces a native file that compiles
-     to the same effect.
+ステージ:
+  1. xmlio の書式の忠実性: すべての実フィクスチャ (このツールキットの元になった
+     AndrewFM01 サンプルからコピー) で serialize(parse(text)) == text。
+  2. presets/model の往復: presets.py だけで (XML を手書きせずに) ツリーを作り、
+     parse -> serialize -> reparse して構造が安定していることを確認。
+  3. 配布済みの実 ParticleFile アセットに対する .meta の往復
+     (tools/common/meta_base.py の base_class_count=2 修正が効いていることの証明)。
+  4. 実際のネストしたアセットに対する install() のパス規則チェック。
+  5. できる範囲の CUI コンパイル: このマシンで見つかった Effekseer CUI ごとに 1 回
+     実行する (effekseer.cui_paths の全エントリと、対象バージョンが解決するもの)。
+     フィクスチャと presets で作ったツリーをコンパイルし、終了コード 0、EFKE
+     コンテナ、その Effekseer バージョンが書くバイナリバージョンを確認する。
+     それ以外の環境ではスキップ。
+  6. Effekseer の列挙値域 (enums.py): 範囲外のイージング速度がビルド時と
+     `validate` で拒否されること、pva() の軸ごとのブロックが Effekseer が実際に読む
+     大文字の <Center>/<Max>/<Min> で出力されること、`install` が既存アセットの
+     GUID を保つこと。
+  7. できる範囲のコーパス走査: $EFFEKSEER_CORPUS (既定: effect_config.json の
+     selftest.corpus_dir) 以下のすべての実 .efkproj が、Effekseer 1.7 と 1.80 の
+     両方で列挙値域違反ゼロ、CommonValues レイアウトの問題ゼロであること -
+     enums.py の表の誤検出ガード。配布済みの全 .efkefc のエディタが書いた EDIT
+     チャンクも同じように走査する (保存したエディタのプロファイルで)。
+  8. effect_config.json の読み込み (既定値、相対パス、JSON エラー、
+     meta.enabled=false での install) と `export` (マニフェストが完全、ユーザー
+     プロファイルのパス無し、配布する設定に CUI パス無し)。
+  9. テクスチャ/モデル参照: validate/compile が存在しないファイルと別フォルダへの
+     --out を拒否すること。install が参照ファイルを --dest の隣にコピーし、
+     --project のコピーのパスを付け替え、存在しない / 衝突する / ../ の参照を拒否
+     すること。実際の _Source/ の .efkproj がすべて解決できること。
+ 10. Effekseer のバージョン (versions.py / efkefc.py): ToolVersion の解析、
+     ファイルごとのマイグレーションルール (versions.MIGRATIONS) とそのガード、
+     ファミリーごとの列挙値域、バージョン/CUI の解決 (cui_paths、CUI のバージョン
+     検出、不一致の拒否)、INFO チャンクのレイアウト (文字列リストと依存リスト)、
+     install の project.runtime_version ガード。
+ 11. できる範囲の Effekseer 1.80 での実地確認: 1.80 の CUI があれば、presets で
+     作ったツリーを複数の ToolVersion でコンパイルして EDIT チャンクをデコードする:
+     Effekseer が捨てる値はすべて versions.MIGRATIONS で捕まること、presets の
+     v180 CommonValues が 1.80 自身のマイグレーション結果と一致すること、1.80 専用の
+     列挙値が残ること、`upgrade` が同じエフェクトにコンパイルされるネイティブな
+     ファイルを作ること。
 
-Stages 3/4 and parts of 6 read real assets under project.effect_dir and skip
-when they are absent (e.g. outside NanamiEngine).
+ステージ 3/4 と 6 の一部は project.effect_dir 以下の実アセットを読み、それが無い
+場合 (例: NanamiEngine の外) はスキップする。
 """
 
 from __future__ import annotations
@@ -76,29 +75,29 @@ CONFIG = config.get()
 TESTDATA = _HERE.parent / "testdata"
 FIXTURES = [
     "actionLines_shockwave", "smallTexturesRibbon", "drill",
-    # Added when Model/Track/LocationAbsValues/RotationValues-AxisPVA support
-    # was built from a wider 310-file real-sample corpus (Effekseer素材/):
-    "blue_laser",       # AndrewFM01 - Circle (Type=3) generation + AttractiveForce
+    # Model/Track/LocationAbsValues/RotationValues-AxisPVA 対応を、より広い
+    # 310 ファイルの実サンプルコーパス (Effekseer素材/) から作ったときに追加:
+    "blue_laser",       # AndrewFM01 - Circle (Type=3) の生成 + AttractiveForce
     "Gohlem1",          # MAGICALxSPIRAL - Model (Type=5) DrawingValues
     "Sylph2",           # MAGICALxSPIRAL - Track (Type=6) DrawingValues
     "Water_Impact",     # MAGICALxSPIRAL - RotationValues AxisPVA (Type=3)
 ]
 
 REAL_EFFECT_DIR = CONFIG.effect_dir
-# The 310-file real sample corpus the toolkit was built from (11 asset packs);
-# machine-specific like the CUI, so the sweep skips cleanly when absent.
+# このツールキットの元になった 310 ファイルの実サンプルコーパス (11 アセットパック)。
+# CUI と同じくマシン固有なので、無ければ走査はきれいにスキップする。
 DEFAULT_CORPUS_DIR = CONFIG.corpus_dir
 REAL_META_FIXTURES = [
     REAL_EFFECT_DIR / "Laser01.efkefc.meta",
-    REAL_EFFECT_DIR / "tktk01" / "fireSpark.efkefc.meta",
+    REAL_EFFECT_DIR / "tktk01" / "fireBall.efkefc.meta",
     REAL_EFFECT_DIR / "MAGICALxSPIRAL" / "Salamander11.efkefc.meta",
 ]
 
 
 def _efkefc_bytes(version: int, paths: list[str]) -> bytes:
-    """A minimal .efkefc: EFKE header, an INFO chunk in the layout ``version``
-    uses (string lists up to 1610, one dependency list after) and a BIN_
-    chunk with just the SKFE header."""
+    """最小限の .efkefc: EFKE ヘッダ、``version`` が使うレイアウト (1610 までは
+    文字列リスト、それ以降は依存リスト 1 つ) の INFO チャンク、SKFE ヘッダだけの
+    BIN_ チャンク。"""
     import struct
 
     def utf16(text: str) -> bytes:
@@ -186,9 +185,9 @@ def stage_presets_roundtrip(r: Reporter) -> None:
         r.fail("presets-built ring+sprite tree", traceback.format_exc())
 
     try:
-        # Regression check: generation_location_circle() used to hardcode
-        # Type="0" (should be "3" - every real Circle-shaped sample uses the
-        # outer Type=3 selector; Type=0 is Point).
+        # 回帰チェック: generation_location_circle() は以前 Type="0" をハードコード
+        # していた ("3" であるべき - Circle 形の実サンプルはすべて外側の Type=3
+        # セレクタを使う。Type=0 は Point)。
         circle = p.generation_location_circle(division=8, circle_type=1,
                                                radius={"center": 2, "max": 2, "min": 2})
         if circle.require("Type").text != "3":
@@ -300,12 +299,12 @@ def stage_presets_roundtrip(r: Reporter) -> None:
         r.fail("presets-built Sprite/RendererCommonValues tree", traceback.format_exc())
 
     try:
-        # ColorAll_Easing (Sprite/Ribbon) and Ring's independent per-position
-        # OuterColor/CenterColor/InnerColor Random/Easing selectors - found
-        # after the initial Model/Track/Sound pass, via a second look at the
-        # same 310-file corpus (confirmed real: MAGICALxSPIRAL/AquaPoint.efkproj
-        # for ColorAll_Easing + the block-level DrawnAs/ColorSpace siblings on
-        # *_Random; AndrewFM01/boss_death.efkproj for Ribbon's ColorAll=2).
+        # ColorAll_Easing (Sprite/Ribbon) と、Ring の位置ごとに独立した
+        # OuterColor/CenterColor/InnerColor の Random/Easing セレクタ - 最初の
+        # Model/Track/Sound 対応の後、同じ 310 ファイルのコーパスを見直して
+        # 見つけたもの (実在を確認: ColorAll_Easing と *_Random のブロックレベルの
+        # DrawnAs/ColorSpace 兄弟は MAGICALxSPIRAL/AquaPoint.efkproj、
+        # Ribbon の ColorAll=2 は AndrewFM01/boss_death.efkproj)。
         sprite_easing = p.sprite(color_all_easing=p.easing(
             "ColorAll_Easing",
             start=p.random_color("Start", r={"center": 255, "max": 255, "min": 255}, drawn_as=1),
@@ -356,14 +355,14 @@ def stage_content_path_convention(r: Reporter) -> None:
     r.section("stage 4: content_path_for() convention check")
     try:
         target_dir = REAL_EFFECT_DIR / "tktk01"
-        if not (target_dir / "fireSpark.efkefc.meta").exists():
-            r.ok("content_path_for() convention (skipped: tktk01/fireSpark.efkefc.meta not present)")
+        if not (target_dir / "fireBall.efkefc.meta").exists():
+            r.ok("content_path_for() convention (skipped: tktk01/fireBall.efkefc.meta not present)")
             return
-        got = meta.content_path_for("fireSpark", target_dir, CONFIG.project_root)
-        want = meta.read_meta(target_dir / "fireSpark.efkefc.meta")["content_path"]
+        got = meta.content_path_for("fireBall", target_dir, CONFIG.project_root)
+        want = meta.read_meta(target_dir / "fireBall.efkefc.meta")["content_path"]
         if got != want:
             raise AssertionError(f"content_path_for() = {got!r}, real asset has {want!r}")
-        r.ok("content_path_for() matches real fireSpark.efkefc.meta (all-backslash)")
+        r.ok("content_path_for() matches real fireBall.efkefc.meta (all-backslash)")
     except Exception:  # noqa: BLE001
         r.fail("content_path_for() convention", traceback.format_exc())
 
@@ -385,9 +384,9 @@ def _compile_check(cui: Path, profile: versions.Profile, in_path: Path, out_path
 
 
 def available_cuis() -> list[tuple[str, Path, versions.Profile]]:
-    """``(version, exe, profile)`` for every distinct Effekseer CUI present:
-    each ``effekseer.cui_paths`` entry plus whatever the target version
-    resolves to (``$EFFEKSEER_CUI`` / ``effekseer.cui_path`` included)."""
+    """存在する Effekseer CUI (重複除去) ごとの ``(version, exe, profile)``:
+    ``effekseer.cui_paths`` の各エントリと、対象バージョンが解決するもの
+    (``$EFFEKSEER_CUI`` / ``effekseer.cui_path`` を含む)。"""
     found: list[tuple[str, Path]] = [(k, v) for k, v in CONFIG.cui_paths.items() if v.is_file()]
     eff = cli.resolve_effekseer(None, None)
     if eff.cui is not None:
@@ -441,11 +440,11 @@ def _stage_cui_compile_one(r: Reporter, version: str, cui: Path, profile: versio
             r.fail(f"{tag} compile presets-built tree", traceback.format_exc())
 
         try:
-            # Model/Track are the two DrawingValues kinds added from the
-            # wider 310-file corpus (DRAWING_TYPE 5/6) - confirm the real
-            # CUI still accepts them (and the LocationAbsValues/SoundValues/
-            # generation_location_point blocks alongside), not just that our
-            # own xmlio round-trips them.
+            # Model/Track は、より広い 310 ファイルのコーパスから追加した
+            # 2 つの DrawingValues 種別 (DRAWING_TYPE 5/6) - 自前の xmlio で
+            # 往復できるだけでなく、本物の CUI が (併せて LocationAbsValues/SoundValues/
+            # generation_location_point ブロックも) 受け付けることを
+            # 確認する。
             model_node = p.model_node(
                 "Node", model_block=p.model(model_path="Model/rock.efkmodel"),
                 location_abs=p.location_abs_values(attractive_force=0.025))
@@ -483,12 +482,12 @@ def _stage_cui_compile_one(r: Reporter, version: str, cui: Path, profile: versio
             r.fail(f"{tag} compile ColorAll_Easing/Ring-color-mode presets-built tree", traceback.format_exc())
 
         try:
-            # Regression check for DRAWING_TYPE["sprite"]: a Sprite node's
-            # RendererCommonValues.ColorTexture must actually reach the
-            # compiled INFO chunk (as a UTF-16LE string) - it silently didn't
-            # when "sprite" mapped to node-type 0 (which Effekseer treats as
-            # "no drawing", not Sprite; the real value is 2), so nothing
-            # referenced the texture and the CUI dropped it with no error.
+            # DRAWING_TYPE["sprite"] の回帰チェック: Sprite ノードの
+            # RendererCommonValues.ColorTexture が、コンパイル済みの INFO チャンクに
+            # (UTF-16LE 文字列として) 本当に入ること - "sprite" がノード種別 0
+            # (Effekseer は Sprite ではなく「描画無し」と扱う。正しい値は 2) に
+            # 対応していたときは黙って入らず、何もテクスチャを参照しないので
+            # CUI がエラー無しで捨てていた。
             renderer = Elem("RendererCommonValues")
             renderer.set_path("ColorTexture", "Texture/selftestRegressionTex.png")
             node = p.sprite_node("Node", sprite_block=p.sprite(billboard=2),
@@ -514,7 +513,7 @@ def _stage_cui_compile_one(r: Reporter, version: str, cui: Path, profile: versio
 
 
 def _add_node_args(proj_path: Path, **overrides) -> argparse.Namespace:
-    """``add-node``'s parsed arguments with every flag unset."""
+    """全フラグ未指定の ``add-node`` の解析済み引数。"""
     ns = argparse.Namespace(file=str(proj_path), parent="", kind="sprite", name="N",
                             life=None, max_generation=None, infinite=None, generation_time=None,
                             generation_timing=None, trigger=None, trigger_count=None,
@@ -542,13 +541,13 @@ def _assert_raises_value_error(fn, what: str) -> None:
 def stage_enum_domains(r: Reporter) -> None:
     r.section("stage 6: Effekseer enum domains (editor-crash guard) + pva() casing + install GUID reuse")
     try:
-        # FadeIn/FadeOut StartSpeed/EndSpeed and every Easing block's
-        # StartSpeed/EndSpeed are Enum<EasingStart>/<EasingEnd> in Effekseer
-        # (-30..30 step 10). The shipped DragonDefeatSparkle/FootstepDust/
-        # DragonFireBall sources were built with EndSpeed=-50..-100, which the
-        # CUI compiled happily and Effekseer's editor then crashed on
-        # (NullReferenceException in GUI.Component.Enum.Update) as soon as the
-        # Basic Render Settings dock showed such a node.
+        # FadeIn/FadeOut の StartSpeed/EndSpeed と、すべての Easing ブロックの
+        # StartSpeed/EndSpeed は Effekseer では Enum<EasingStart>/<EasingEnd>
+        # (-30..30、10 刻み)。配布していた DragonDefeatSparkle/FootstepDust/
+        # DragonFireBall の原本は EndSpeed=-50..-100 で作られていて、CUI は
+        # 問題なくコンパイルしたが、Effekseer のエディタはそういうノードを
+        # Basic Render Settings ドックが表示した途端に落ちた
+        # (GUI.Component.Enum.Update での NullReferenceException)。
         _assert_raises_value_error(
             lambda: p.renderer_common(fade_out={"frame": 4, "start_speed": 0, "end_speed": -90}),
             "renderer_common(fade_out end_speed=-90)")
@@ -586,10 +585,10 @@ def stage_enum_domains(r: Reporter) -> None:
         r.fail("cli _parse_fade", traceback.format_exc())
 
     try:
-        # Regression: pva() per-axis dicts used to write the dict keys verbatim
-        # (<center>/<max>/<min>), which Effekseer's case-sensitive loader
-        # ignores - every shipped effect with a random Scale silently ran at
-        # scale 1.0.
+        # 回帰: pva() の軸ごとの dict は以前 dict のキーをそのまま
+        # (<center>/<max>/<min>) 書いていて、大文字小文字を区別する Effekseer の
+        # ローダーには無視されていた - ランダムな Scale を持つ配布済みエフェクトは
+        # すべて黙ってスケール 1.0 で動いていた。
         scale = p.pva("Scale", x={"center": 0.6, "max": 0.9, "min": 0.4},
                       y={"center": 0.6, "max": 0.9, "min": 0.4}, drawn_as=0)
         text = xmlio.serialize(scale)
@@ -615,7 +614,7 @@ def stage_enum_domains(r: Reporter) -> None:
                              renderer_common=p.renderer_common(fade_out={"frame": 4}))
         node.set_path("RendererCommonValues.FadeOut.EndSpeed", "-90")
         node.set_path("DrawingValues.Sprite.Billboard", "7")
-        node.set_path("CommonValues.MaxGeneration.Value", "-90")  # plain int, not an enum: must not be flagged
+        node.set_path("CommonValues.MaxGeneration.Value", "-90")  # 列挙ではなく素の整数: 検出されてはいけない
         problems = enums.check_node(node, versions.PROFILE_180)
         if len(problems) != 2 or "EndSpeed=-90" not in problems[0] or "Billboard=7" not in problems[1]:
             raise AssertionError(f"check_node() = {problems!r}, expected exactly the EndSpeed and Billboard hits")
@@ -656,7 +655,7 @@ def stage_enum_domains(r: Reporter) -> None:
         r.fail("enums.check_node()/check_project()", traceback.format_exc())
 
     try:
-        # CLI paths refuse to *write* a violating node (apply stays atomic).
+        # CLI 経由では違反ノードの *書き込み* を拒否する (apply はアトミックのまま)。
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:
             proj_path = Path(tmp) / "t.efkproj"
@@ -716,8 +715,8 @@ def stage_enum_domains(r: Reporter) -> None:
         if not shipped.exists():
             r.ok(f"{shipped.name} asset paths (skipped: not present)")
         else:
-            # The effect is re-saved from the Effekseer editor now and then, so
-            # don't pin exact texture names - just that real paths come back.
+            # このエフェクトは時々 Effekseer エディタで保存し直されるので、
+            # テクスチャ名は固定せず、実際のパスが返ってくることだけを確認する。
             got = cli.efkefc_asset_paths(shipped)
             if not got or not all((shipped.parent / rel).is_file() for rel in got):
                 raise AssertionError(f"efkefc_asset_paths({shipped.name}) = {got!r}")
@@ -726,9 +725,9 @@ def stage_enum_domains(r: Reporter) -> None:
         r.fail("efkefc_asset_paths() on a shipped asset", traceback.format_exc())
 
 
-# Shipped effects (relative to project.effect_dir) whose EDIT chunk really does
-# carry values the editor crashes on - true positives, kept visible in the
-# stage 7 output instead of failing the sweep.
+# EDIT チャンクにエディタが落ちる値を本当に持っている配布済みエフェクト
+# (project.effect_dir からの相対) - 正しい検出なので、走査を失敗させずに
+# ステージ 7 の出力に見えるように残す。
 _KNOWN_BAD_SHIPPED_EFFECTS = {
     "tktk01/DragonFireBall.efkefc": "FadeOut EndSpeed -55..-100 from before the easing-speed guard, "
                                     "same in its _Source copy",
@@ -736,8 +735,8 @@ _KNOWN_BAD_SHIPPED_EFFECTS = {
 
 
 def _profile_of_editor(tool_version: str) -> versions.Profile:
-    """The profile for the editor that wrote an EDIT chunk (``ToolVersion``
-    is that editor's own version)."""
+    """EDIT チャンクを書いたエディタのプロファイル (``ToolVersion`` はその
+    エディタ自身のバージョン)。"""
     return versions.profile_for(tool_version)
 
 
@@ -920,7 +919,7 @@ def stage_config_and_export(r: Reporter) -> None:
 
 
 def _efkefc_with_assets(paths: list[str]) -> bytes:
-    """A minimal 1.7-format .efkefc whose INFO chunk lists ``paths``."""
+    """INFO チャンクに ``paths`` を並べた最小限の 1.7 形式の .efkefc。"""
     return _efkefc_bytes(1710, paths)
 
 
@@ -1067,16 +1066,16 @@ def _without_env(*names: str):
 
 
 def _fake_cui(root: Path, version: str, launcher: bool) -> Path:
-    """A stand-in Effekseer install whose EffekseerCore.dll carries ``version``
-    the way the real ones do (a UTF-16 string among others)."""
+    """EffekseerCore.dll が本物と同じ形 (他の文字列に混じった UTF-16 文字列) で
+    ``version`` を持つ、代役の Effekseer インストール。"""
     tool = root / "Tool"
     real_dir = tool / "bin" if launcher else tool
     real_dir.mkdir(parents=True)
     (tool / "Effekseer.exe").write_bytes(b"MZ")
     if launcher:
         (real_dir / "Effekseer.exe").write_bytes(b"MZ")
-    # like the real DLLs: the editor's own version among older migration
-    # thresholds, "1.0.0.0" and version-like text inside longer strings
+    # 本物の DLL と同様に: エディタ自身のバージョンを、古いマイグレーションの
+    # しきい値、"1.0.0.0"、長い文字列中のバージョンらしいテキストに混ぜる
     older = [x for x in ("1.50", "1.60α9", "1.70α2", "1.80β2")
              if versions.parse_tool_version(x) < versions.parse_tool_version(version)]
     blob = "\x00".join(("1.0.0.0", "Effekseer1.99", *older, version)).encode("utf-16-le")
@@ -1285,7 +1284,7 @@ def stage_versions(r: Reporter) -> None:
             raise AssertionError("bin_version() accepted a BIN_ chunk without SKFE")
         import struct
         i = garbled.find(b"INFO") + 12
-        garbled = garbled[:i] + struct.pack("<i", 99) + garbled[i + 4:]  # dependency count
+        garbled = garbled[:i] + struct.pack("<i", 99) + garbled[i + 4:]  # 依存の数
         try:
             efkefc.parse_asset_paths(garbled)
         except efkefc.EfkefcError:
@@ -1294,7 +1293,7 @@ def stage_versions(r: Reporter) -> None:
             raise AssertionError("parse_asset_paths() accepted a broken dependency list")
         if efkefc.asset_paths(garbled) != paths:
             raise AssertionError(f"asset_paths() fallback = {efkefc.asset_paths(garbled)!r}")
-        real = [(REAL_EFFECT_DIR / "tktk01" / "fireSpark.efkefc", 1710),
+        real = [(REAL_EFFECT_DIR / "tktk01" / "fireBall.efkefc", 1710),
                 (REAL_EFFECT_DIR / "NitoriBox" / "Explosion.efkefc", 1810),
                 (REAL_EFFECT_DIR / "Laser01.efkefc", 1500)]
         present = [(f, v) for f, v in real if f.exists()]
@@ -1331,9 +1330,9 @@ def stage_versions(r: Reporter) -> None:
 
 
 def _canonical(e: Elem) -> str:
-    """``e`` serialized with sibling order ignored except under ``<Children>``
-    (Effekseer reads elements by name; 1.5x editors keep migrated elements
-    where the migration appended them)."""
+    """``<Children>`` の下以外は兄弟の順序を無視してシリアライズした ``e``
+    (Effekseer は要素を名前で読む。1.5x のエディタはマイグレーションした要素を
+    マイグレーションが追加した位置に置いたままにする)。"""
     def canon(x: Elem) -> Elem:
         kids = [canon(c) for c in x.children]
         if x.tag != "Children":
@@ -1351,8 +1350,8 @@ def _compile_edit(cui: Path, profile: versions.Profile, proj: Elem, work: Path, 
 
 
 def _migration_trees() -> dict[str, list[Elem]]:
-    """Presets output covering every block the toolkit builds, for the
-    ToolVersion sweep in stage 11."""
+    """ステージ 11 の ToolVersion 走査用に、ツールキットが作る全ブロックを網羅した
+    presets の出力。"""
     return {
         "ring": [p.ring_node("Node", ring_block=p.ring(
             vertex_count=36, outer=p.xyz("Location", x=1.8), inner=p.xyz("Location", x=0.2), center_ratio=0.8,
@@ -1399,8 +1398,9 @@ def _migration_trees() -> dict[str, list[Elem]]:
     }
 
 
-# Ribbon/Track smoothing is a *behaviour* the 1.70α1 migration pins for old
-# files (TrailSmoothing/TrailTimeSource), not a toolkit field that gets lost.
+# Ribbon/Track のスムージングは、1.70α1 のマイグレーションが古いファイルに対して
+# 固定する *挙動* (TrailSmoothing/TrailTimeSource) で、失われるツールキットの
+# フィールドではない。
 _BEHAVIOUR_ONLY_TAGS = ("<TrailSmoothing>", "<TrailTimeSource>")
 
 
@@ -1415,10 +1415,10 @@ def stage_ground_truth(r: Reporter) -> None:
 
 
 def check_cui_ground_truth(r: Reporter, version: str, cui: Path, profile: versions.Profile, migrations: bool) -> None:
-    """Compile presets-built trees with one CUI and decode the EDIT chunk:
-    ``migrations`` = every migration that editor knows is caught by
-    versions.MIGRATIONS (slow: one compile per tree x threshold); for 1.80,
-    the v180 CommonValues layout; for all, ``upgrade`` round trips."""
+    """presets で作ったツリーを 1 つの CUI でコンパイルし EDIT チャンクをデコードする:
+    ``migrations`` = そのエディタが知っている全マイグレーションが versions.MIGRATIONS で
+    捕まること (遅い: ツリー x しきい値ごとに 1 回コンパイル)。1.80 では v180 の
+    CommonValues レイアウト。全バージョンで ``upgrade`` の往復。"""
     tag = f"[Effekseer {version}]"
     import argparse
     import contextlib

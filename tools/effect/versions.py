@@ -1,32 +1,30 @@
-"""Effekseer version handling: which editor/CUI the toolkit targets, and what
-that changes about the ``.efkproj`` it reads and writes.
+"""Effekseer のバージョンの扱い: ツールキットがどのエディタ/CUI を対象にするか、
+それによって読み書きする ``.efkproj`` の何が変わるか。
 
-Supported families (every release with a Windows tool was checked - see
-``README.md``): 1.5x (1.50RC1-1.51), 1.6x (1.60-1.62e), 1.7x (1.70-1.7.3.0)
-and 1.80.x (1.80.0-1.80.7). Within a family every release has identical enum
-domains (read by reflection from each ``EffekseerCore.dll``) and writes the
-same binary version, so a :class:`Profile` is per family.
+対応ファミリー (Windows 版ツールのある全リリースを確認済み - ``README.md`` 参照):
+1.5x (1.50RC1-1.51)、1.6x (1.60-1.62e)、1.7x (1.70-1.7.3.0)、
+1.80.x (1.80.0-1.80.7)。同じファミリー内の全リリースは列挙の値域が同一
+(各 ``EffekseerCore.dll`` からリフレクションで読み取り) で、同じバイナリバージョンを
+書くので、:class:`Profile` はファミリーごとに 1 つ。
 
-Two different things decide the format, and they must not be confused:
+形式を決めるものは 2 つあり、混同してはいけない:
 
-* **The configured Effekseer version** (``effekseer.version`` in
-  ``effect_config.json``, ``$EFFEKSEER_VERSION`` or ``--effekseer-version``)
-  picks a :class:`Profile`: the CUI to run, the enum domains the editor accepts
-  (see ``enums.py``) and the binary version the CUI must produce.
-* **A file's own ``<ToolVersion>``** decides how Effekseer *loads* it. Every
-  editor runs its version migrations (``Core.LoadFromXml`` +
-  ``Utils/ProjectVersionUpdater.cs``) only on files older than each
-  migration's threshold. ``presets.py`` builds the oldest shapes (the ones
-  the real samples it was built from use), so they are only read correctly
-  from a file old enough for every migration to run - which is why
-  ``new-project`` always writes :data:`LEGACY_TOOL_VERSION`. In a newer file
-  those fields are silently ignored, and the reverse (a migrated, "native"
-  field in an old file) is overwritten by the migration. :data:`MIGRATIONS`
-  lists both sides per threshold; the guards below refuse either mismatch.
-  Verified by compiling each shape under several ToolVersions with the 1.80.7
-  CUI and decoding the ``EDIT`` chunk (``selftest`` stage 11). An editor also
-  refuses a ``ToolVersion`` newer than itself, printing "Version Error" while
-  still exiting 0.
+* **設定された Effekseer バージョン** (``effect_config.json`` の ``effekseer.version``、
+  ``$EFFEKSEER_VERSION``、``--effekseer-version``) は :class:`Profile` を選ぶ:
+  実行する CUI、エディタが受け付ける列挙の値域 (``enums.py`` 参照)、CUI が出力
+  すべきバイナリバージョン。
+* **ファイル自身の ``<ToolVersion>``** は Effekseer がそれをどう *読み込む* かを
+  決める。どのエディタもバージョンマイグレーション (``Core.LoadFromXml`` +
+  ``Utils/ProjectVersionUpdater.cs``) は各マイグレーションのしきい値より古い
+  ファイルにしか実行しない。``presets.py`` は最も古い形 (元にした実サンプルが
+  使っている形) を作るので、それが正しく読まれるのは全マイグレーションが走るほど
+  古いファイルだけ - だから ``new-project`` は常に :data:`LEGACY_TOOL_VERSION` を
+  書く。新しいファイルではそのフィールドは黙って無視され、逆 (古いファイルに
+  マイグレーション後の「ネイティブ」フィールド) はマイグレーションで上書きされる。
+  :data:`MIGRATIONS` はしきい値ごとに両側を列挙し、下のガードがどちらの食い違いも
+  拒否する。各形を 1.80.7 の CUI で複数の ToolVersion でコンパイルし、``EDIT``
+  チャンクをデコードして確認した (``selftest`` のステージ 11)。エディタは自分より
+  新しい ``ToolVersion`` も拒否し、"Version Error" を表示しつつ 0 で終了する。
 """
 
 from __future__ import annotations
@@ -38,13 +36,13 @@ from pathlib import Path
 from .model import Elem
 
 FALLBACK_VERSION = "1.7.3.0"
-# Pre-1.00 ToolVersion of the AndrewFM01 samples presets.py was built from:
-# unparsable, so every editor (1.50RC1 ... 1.80.7) runs all its migrations.
+# presets.py の元になった AndrewFM01 サンプルの 1.00 以前の ToolVersion:
+# 解析できないので、どのエディタ (1.50RC1 ... 1.80.7) も全マイグレーションを実行する。
 LEGACY_TOOL_VERSION = "0.7CTP1"
 
 
 def _parse_uint(text: str) -> int | None:
-    """``uint.TryParse`` with the default ``NumberStyles.Integer``."""
+    """既定の ``NumberStyles.Integer`` での ``uint.TryParse``。"""
     m = re.fullmatch(r"\s*\+?(\d+)\s*", text)
     if m is None:
         return None
@@ -53,10 +51,10 @@ def _parse_uint(text: str) -> int | None:
 
 
 def parse_tool_version(text: str) -> int:
-    """Port of Effekseer's ``Core.ParseVersion`` (1.80.7 ``Core.cs``): the
-    number every ``ToolVersion`` comparison in the editor uses.
-    ``"1.80"`` -> 180030, ``"1.80β2"`` -> 180012, ``"1.7.3.0"`` -> 173030,
-    ``"0.7CTP1"`` -> 30 (unparsable, so every migration runs).
+    """Effekseer の ``Core.ParseVersion`` (1.80.7 ``Core.cs``) の移植: エディタの
+    ``ToolVersion`` 比較すべてが使う数値。
+    ``"1.80"`` -> 180030、``"1.80β2"`` -> 180012、``"1.7.3.0"`` -> 173030、
+    ``"0.7CTP1"`` -> 30 (解析不能なので全マイグレーションが走る)。
     """
     minor = 30
     for key, base in (("α", 0), ("β", 10), ("RC", 20)):
@@ -88,7 +86,7 @@ V180_LAYOUT_MIN = parse_tool_version("1.80β2")
 @dataclass(frozen=True)
 class Profile:
     family: str           # "1.5" | "1.6" | "1.7" | "1.80"
-    binary_version: int   # INFO/BIN_ version this family's CUI writes
+    binary_version: int   # このファミリーの CUI が書く INFO/BIN_ のバージョン
 
 
 PROFILE_15 = Profile(family="1.5", binary_version=1500)
@@ -115,8 +113,8 @@ def profile_for(version: str) -> Profile:
 
 
 def runtime_max_binary_version(runtime_version: str) -> int:
-    """Highest effect binary version a runtime of that family loads
-    (``SupportBinaryVersion``)."""
+    """そのファミリーのランタイムが読み込める最も新しいエフェクトのバイナリバージョン
+    (``SupportBinaryVersion``)。"""
     try:
         return profile_for(runtime_version).binary_version
     except ValueError:
@@ -132,11 +130,11 @@ def binary_version_label(binary_version: int) -> str:
 
 
 # ---------------------------------------------------------------------------
-# the Effekseer tool on disk
+# ディスク上の Effekseer ツール
 def resolve_cui_exe(exe: Path) -> Path:
-    """1.80's ``Tool/Effekseer.exe`` is a launcher that re-runs
-    ``Tool/bin/Effekseer.exe`` (and prints a ``Finished ...`` line); run the
-    real one directly when it is there."""
+    """1.80 の ``Tool/Effekseer.exe`` は ``Tool/bin/Effekseer.exe`` を起動し直す
+    ランチャー (しかも ``Finished ...`` 行を出力する) なので、本体があれば
+    そちらを直接実行する。"""
     real = exe.parent / "bin" / "Effekseer.exe"
     return real if real.is_file() else exe
 
@@ -146,15 +144,15 @@ _VERSION_TOKEN_RE = re.compile(r"(?<![0-9A-Za-z.])1\.\d+(?:\.\d+)*(?:RC\d+|α\d+
 
 
 def detect_cui_version(exe: Path) -> str | None:
-    """The editor version (``Core.Version``, e.g. ``1.62e``, ``1.7.3.0``,
-    ``1.80.7``) found in ``EffekseerCore.dll`` next to ``exe`` or in its
-    ``bin/`` - ``Effekseer.exe``'s own file-version resource just reads
-    ``1.0.0.0``. The DLL's UTF-16 strings also hold its migration thresholds
-    (``1.60α9``, ``1.80β2``, ...), all older than the editor itself, so the
-    highest by :func:`parse_tool_version` wins. Matches ``Core.Version`` for
-    every 1.5x-1.80.x release except the 1.50 release candidates (reported as
-    ``1.50``; same family). ``None`` when the DLL or a plausible string isn't
-    found."""
+    """``exe`` の隣か、その ``bin/`` にある ``EffekseerCore.dll`` から見つけた
+    エディタのバージョン (``Core.Version``。例: ``1.62e``、``1.7.3.0``、``1.80.7``) -
+    ``Effekseer.exe`` 自身のファイルバージョンリソースは ``1.0.0.0`` としか
+    読めない。DLL の UTF-16 文字列にはマイグレーションのしきい値 (``1.60α9``、
+    ``1.80β2``、...) も含まれるが、どれもエディタ自身より古いので
+    :func:`parse_tool_version` で最も大きいものを採用する。1.50 のリリース候補
+    (``1.50`` と報告される。ファミリーは同じ) 以外の 1.5x-1.80.x の全リリースで
+    ``Core.Version`` と一致する。DLL やそれらしい文字列が見つからなければ
+    ``None``。"""
     for dll in (exe.parent / "EffekseerCore.dll", exe.parent / "bin" / "EffekseerCore.dll"):
         if not dll.is_file():
             continue
@@ -173,18 +171,17 @@ def same_family(a: str, b: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# per-file ToolVersion rules
+# ファイルごとの ToolVersion ルール
 @dataclass(frozen=True)
 class Migration:
-    """One editor migration: files whose ToolVersion is below ``skipped_from``
-    get ``legacy`` fields moved into ``native`` ones (overwriting those);
-    files at or above it keep ``native`` as written and ignore ``legacy``.
-    Paths are ``/``-separated, relative to ``<Node>``; a trailing ``/*``
-    means any child of that element. ``kinds`` limits the ``native`` side to
-    nodes whose ``DrawingValues/Type`` is one of them (the migration only
-    touches those); ``legacy_requires`` limits the ``legacy`` side to nodes
-    that also have that element (the migration does nothing without it, so
-    nothing is lost)."""
+    """エディタのマイグレーション 1 つ: ToolVersion が ``skipped_from`` 未満の
+    ファイルは ``legacy`` のフィールドが ``native`` 側へ移される (そちらを上書き)。
+    それ以上のファイルは ``native`` を書かれたまま保ち、``legacy`` は無視される。
+    パスは ``/`` 区切りで ``<Node>`` からの相対。末尾の ``/*`` はその要素の任意の子を
+    表す。``kinds`` は ``native`` 側を ``DrawingValues/Type`` がそのどれかである
+    ノードに限定する (マイグレーションはそれらしか触らない)。``legacy_requires`` は
+    ``legacy`` 側を、その要素も持つノードに限定する (それが無ければマイグレーションは
+    何もしないので、何も失われない)。"""
     skipped_from: str
     what: str
     legacy: tuple[str, ...]
@@ -223,8 +220,8 @@ MIGRATIONS: tuple[Migration, ...] = (
               native=("CommonValues/Generation", "CommonValues/Removal"), kinds=(), legacy_requires=None),
 )
 
-# Node-relative blocks the toolkit knows of that older families don't have
-# (absent from their EffekseerCore.dll), with the family that added them.
+# ツールキットが知っている <Node> 相対のブロックのうち古いファミリーには無いもの
+# (その EffekseerCore.dll に存在しない) と、それを追加したファミリー。
 _ADDED_IN = {"GpuParticles": "1.80", "CollisionsValues": "1.80", "KillRulesValues": "1.7",
              "CommonValues/TriggerParam": "1.7"}
 
@@ -239,15 +236,15 @@ def uses_v180_layout(project: Elem) -> bool:
 
 
 def layout_of(project: Elem) -> str:
-    """``CommonValues`` layout for ``presets.common_values``: ``"v180"`` for a
-    file Effekseer 1.80 reads natively, else ``"legacy"``."""
+    """``presets.common_values`` 用の ``CommonValues`` レイアウト: Effekseer 1.80 が
+    ネイティブに読むファイルなら ``"v180"``、それ以外は ``"legacy"``。"""
     return "v180" if uses_v180_layout(project) else "legacy"
 
 
 def drawing_type(node: Elem) -> int:
-    """``DrawingValues/Type`` as Effekseer reads it: a missing ``Type`` (or
-    ``DrawingValues``) is Sprite (2) in every 1.5x-1.80.x editor; -1 when the
-    text isn't an integer."""
+    """Effekseer が読むとおりの ``DrawingValues/Type``: ``Type`` (または
+    ``DrawingValues``) が無ければ 1.5x-1.80.x のどのエディタでも Sprite (2)。
+    テキストが整数でなければ -1。"""
     t = node.get("DrawingValues.Type")
     try:
         return int((t.text or "").strip()) if t is not None else 2
@@ -256,9 +253,9 @@ def drawing_type(node: Elem) -> int:
 
 
 def node_migration_problems(node: Elem, tool_version: str) -> list[str]:
-    """Fields directly under ``node`` that Effekseer drops (legacy shape in a
-    file too new for the migration) or overwrites (native shape in a file old
-    enough to be migrated) for a file declaring ``tool_version``."""
+    """``tool_version`` を宣言したファイルにおいて、``node`` 直下のフィールドのうち
+    Effekseer が捨てるもの (マイグレーションには新しすぎるファイル中の legacy 形) や
+    上書きするもの (マイグレーションされるほど古いファイル中の native 形)。"""
     number = parse_tool_version(tool_version)
     shown = tool_version or "(none)"
     problems: list[str] = []
@@ -287,7 +284,7 @@ def node_unsupported_blocks(node: Elem, profile: Profile) -> list[str]:
 
 
 def walk_nodes(project: Elem):
-    """``(path, label, node)`` for every node, with ``show``'s addressing."""
+    """全ノードの ``(path, label, node)``。指定方式は ``show`` と同じ。"""
     root = project.child("Root")
     kids = root.child("Children") if root is not None else None
     if kids is None:

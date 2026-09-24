@@ -1,35 +1,33 @@
-"""Curated, sample-derived builders for new ``.efkproj`` content.
+"""新しい ``.efkproj`` の内容を作る、サンプル由来の厳選ビルダー。
 
-Effekseer's real schema is hundreds of fields across dozens of node kinds;
-most fields in any given file are only present because they differ from the
-editor's default. Rather than guess at a complete typed schema, this module
-gives you:
+Effekseer の実際のスキーマは数十のノード種別にわたる数百のフィールドがあり、
+どのファイルでもほとんどのフィールドはエディタの既定値と違うから存在するだけ。
+完全な型付きスキーマを推測する代わりに、このモジュールは次を提供する:
 
-* :func:`elem` - a small generic composer for building any nested tag shape
-  (leaf text, or nested children from either raw values or other ``Elem``s).
-* value-shape helpers (:func:`fixed_axes`, :func:`pva`, :func:`easing`,
-  :func:`random_color`) for the "distribution" shapes seen across the corpus
-  this toolkit was built from.
-* common node-block builders (``common_values``, ``location_values``, ...)
-  and node builders (:func:`sprite_node`, :func:`ring_node`,
-  :func:`ribbon_node`, :func:`model_node`, :func:`track_node`,
-  :func:`group_node`) assembled from real field names and defaults observed
-  in those samples.
+* :func:`elem` - 任意の入れ子のタグ構造 (リーフのテキスト、または生の値や
+  他の ``Elem`` からなる入れ子の子) を組み立てる小さな汎用コンポーザー。
+* 値の形のヘルパー (:func:`fixed_axes`、:func:`pva`、:func:`easing`、
+  :func:`random_color`)。このツールキットの元になったコーパス全体で見られる
+  「分布」の形に対応する。
+* 共通のノードブロックビルダー (``common_values``、``location_values``、...) と
+  ノードビルダー (:func:`sprite_node`、:func:`ring_node`、
+  :func:`ribbon_node`、:func:`model_node`、:func:`track_node`、
+  :func:`group_node`)。それらのサンプルで観測した実際のフィールド名と既定値から
+  組み立てている。
 
-**Scope**: built from 14 AndrewFM01 samples originally (v1: ``Sprite`` /
-``Ring`` / ``Ribbon`` ``DrawingValues`` only), then widened against a 310-file
-corpus spanning 11 real asset packs (AndrewFM01, MAGICALxSPIRAL, NextSoft01,
-NitoriBox, Pierre01_130, Pierre02_130, ProjectDanmakuGirls, Suzuki01,
-TouhouStrategy, tktk01, tktk02) to add ``Model``/``Track`` ``DrawingValues``
-kinds, the ``SoundValues``/``LocationAbsValues`` node-level blocks, and
-several previously-unmodeled parameter categories on the existing blocks
-(texture/fade/UV on ``RendererCommonValues``, random/per-corner color and
-position on ``Sprite``, Easing/Single/Axis scaling+rotation variants, parent
-transform-inheritance flags on ``CommonValues``). Still out of scope, same
-reasoning as v1 (rare in the corpus and/or no confirmed-active real example
-to crib from): FCurve (keyframed) variants of Scaling/Rotation/Sprite color,
-project-root ``Behavior``/``TargetLocation``/``Culling`` metadata, and a
-``Field``/turbulence/collision node concept (none found in 310 real samples).
+**範囲**: 最初は AndrewFM01 のサンプル 14 個から作り (v1: ``Sprite`` /
+``Ring`` / ``Ribbon`` の ``DrawingValues`` のみ)、その後 11 の実アセットパック
+(AndrewFM01、MAGICALxSPIRAL、NextSoft01、NitoriBox、Pierre01_130、Pierre02_130、
+ProjectDanmakuGirls、Suzuki01、TouhouStrategy、tktk01、tktk02) にまたがる
+310 ファイルのコーパスで広げ、``Model``/``Track`` の ``DrawingValues`` 種別、
+ノードレベルの ``SoundValues``/``LocationAbsValues`` ブロック、既存ブロックで未対応
+だったいくつかのパラメータ区分 (``RendererCommonValues`` のテクスチャ/フェード/UV、
+``Sprite`` のランダム/頂点ごとの色と位置、Easing/Single/Axis の拡縮+回転の変種、
+``CommonValues`` の親トランスフォーム継承フラグ) を追加した。v1 と同じ理由
+(コーパスでまれ、かつ/または参考にできる実際に有効な例が無い) でまだ範囲外のもの:
+拡縮/回転/Sprite 色の FCurve (キーフレーム) 版、プロジェクトルートの
+``Behavior``/``TargetLocation``/``Culling`` メタデータ、``Field``/乱流/衝突の
+ノード概念 (310 個の実サンプルに 1 つも無かった)。
 """
 
 from __future__ import annotations
@@ -38,14 +36,14 @@ from .enums import easing_speed
 from .model import Elem
 
 # ---------------------------------------------------------------------------
-# generic composition
+# 汎用の組み立て
 def _fmt(value) -> str:
     if isinstance(value, (dict, list, tuple)):
-        # A dict/list here means a PVA-shaped {"center":.., "max":.., "min":..}
-        # spec (or similar) was passed where a leaf text value was expected -
-        # e.g. xyz("Velocity", x={...}) instead of building a proper nested
-        # PVA block. str()-ing it would silently write the Python repr as
-        # element text (well-formed XML, garbage data) instead of failing.
+        # ここに dict/list が来るのは、リーフのテキスト値を期待する場所に PVA 形の
+        # {"center":.., "max":.., "min":..} 指定 (などの) が渡されたということ -
+        # 例えば正しい入れ子の PVA ブロックを作らずに xyz("Velocity", x={...}) とした場合。
+        # str() すると失敗せずに Python の repr を要素テキストとして黙って書いてしまう
+        # (XML としては正しいが中身はゴミ)。
         raise TypeError(
             f"_fmt() got a {type(value).__name__} ({value!r}); did you mean to "
             "build a nested Elem (e.g. via pva()) instead of passing this as a "
@@ -61,19 +59,19 @@ def _fmt(value) -> str:
 
 
 def _opt_speed(value, what: str) -> int | None:
-    """``None`` passes through (field omitted); anything else must be a legal
-    Effekseer easing speed (see :func:`enums.easing_speed`)."""
+    """``None`` はそのまま通す (フィールド省略)。それ以外は Effekseer の正しい
+    イージング速度でなければならない (:func:`enums.easing_speed` 参照)。"""
     return None if value is None else easing_speed(value, what)
 
 
 def elem(tag: str, *, text=None, children: list[Elem] | None = None, **leaf_children) -> Elem:
-    """Build an :class:`Elem`.
+    """:class:`Elem` を作る。
 
-    ``elem("X", text=1.8)`` -> a text leaf ``<X>1.8</X>``.
-    ``elem("Location", X=1.8)`` -> ``<Location><X>1.8</X></Location>``.
-    ``elem("Outer_Fixed", Location=elem("Location", X=1.8))`` nests an
-    already-built ``Elem`` (keyword name is only for readability at the call
-    site - the child's own ``.tag`` is what's written).
+    ``elem("X", text=1.8)`` -> テキストリーフ ``<X>1.8</X>``。
+    ``elem("Location", X=1.8)`` -> ``<Location><X>1.8</X></Location>``。
+    ``elem("Outer_Fixed", Location=elem("Location", X=1.8))`` は作成済みの
+    ``Elem`` を入れ子にする (キーワード名は呼び出し側の読みやすさのためだけで、
+    書き出されるのは子自身の ``.tag``)。
     """
     e = Elem(tag)
     if children:
@@ -89,20 +87,20 @@ def elem(tag: str, *, text=None, children: list[Elem] | None = None, **leaf_chil
 
 
 # ---------------------------------------------------------------------------
-# value-shape helpers
+# 値の形のヘルパー
 def fixed_axes(tag: str, **axes) -> Elem:
-    """A ``Tag_Fixed``-style leaf with per-axis values, e.g.
-    ``fixed_axes("ColorAll_Fixed", R=0, G=0, B=0, A=255)``.
+    """軸ごとの値を持つ ``Tag_Fixed`` 形式のリーフ。例:
+    ``fixed_axes("ColorAll_Fixed", R=0, G=0, B=0, A=255)``。
     """
     return elem(tag, **axes)
 
 
 def pva(tag: str, *, x=None, y=None, z=None, center=None, max=None, min=None,
         drawn_as: int | None = None) -> Elem:
-    """Either a single scalar PVA block (pass ``center``/``max``/``min``
-    directly) or a per-axis PVA block (pass ``x=``/``y=``/``z=`` as dicts of
-    ``{"center":..,"max":..,"min":..}``), matching both shapes seen in the
-    samples (e.g. ``ScalingValues.PVA.Scale.X`` vs a bare scalar PVA).
+    """単一スカラーの PVA ブロック (``center``/``max``/``min`` を直接渡す) か、
+    軸ごとの PVA ブロック (``x=``/``y=``/``z=`` に
+    ``{"center":..,"max":..,"min":..}`` の dict を渡す) のどちらか。サンプルで見られる
+    両方の形に対応する (例: ``ScalingValues.PVA.Scale.X`` と素のスカラー PVA)。
     """
     e = Elem(tag)
     axes = {"X": x, "Y": y, "Z": z}
@@ -110,13 +108,13 @@ def pva(tag: str, *, x=None, y=None, z=None, center=None, max=None, min=None,
         for name, spec in axes.items():
             if spec is None:
                 continue
-            # Recurse through the scalar branch so each axis comes out as
-            # <Center>/<Max>/<Min>(/<DrawnAs>). This used to be
-            # elem(name, **spec), which wrote the dict keys verbatim as
-            # lowercase <center>/<max>/<min> - Effekseer's loader looks the
-            # children up case-sensitively (e["Center"]), so the whole axis
-            # was silently ignored and fell back to the editor default (scale
-            # 1.0, no randomization) in every shipped effect built this way.
+            # スカラーの分岐を再帰的に通して、各軸が
+            # <Center>/<Max>/<Min>(/<DrawnAs>) になるようにする。以前は
+            # elem(name, **spec) で、dict のキーをそのまま小文字の
+            # <center>/<max>/<min> として書いていた - Effekseer のローダーは子を
+            # 大文字小文字を区別して探す (e["Center"]) ので、軸全体が黙って
+            # 無視され、この方法で作って配布したエフェクトはすべてエディタの既定値
+            # (スケール 1.0、ランダム無し) になっていた。
             e.children.append(pva(name, **spec))
         if drawn_as is not None:
             e.children.append(Elem("DrawnAs", text=_fmt(drawn_as)))
@@ -134,17 +132,17 @@ def pva(tag: str, *, x=None, y=None, z=None, center=None, max=None, min=None,
 
 def easing(tag: str, start: Elem | None = None, end: Elem | None = None,
            start_speed=None, end_speed=None) -> Elem:
-    """A ``Start``/``End`` (+ optional ``StartSpeed``/``EndSpeed``) block.
-    ``start``/``end`` can be per-axis (``elem("Start", X=pva(...), ...)``),
-    flat-scalar (``pva("Start", center=.., max=.., min=..)``), or per-channel
-    (``random_color("Start", r=.., g=.., ...)``) - whichever shape the
-    caller builds, since real samples use all three depending on which block
-    this ``Easing`` sits under (Location/Scaling/Rotation vs. Scaling's
-    ``SingleEasing`` vs. Model/Track's per-channel color easing).
-    ``start_speed``/``end_speed`` are Effekseer ``EasingStart``/``EasingEnd``
-    enums, not free floats: only ``-30,-20,-10,0,10,20,30`` are legal (see
-    :data:`enums.EASING_SPEEDS`); anything else raises ``ValueError`` here
-    because the Effekseer editor crashes on it.
+    """``Start``/``End`` (+ 任意の ``StartSpeed``/``EndSpeed``) ブロック。
+    ``start``/``end`` は軸ごと (``elem("Start", X=pva(...), ...)``)、
+    平坦なスカラー (``pva("Start", center=.., max=.., min=..)``)、チャンネルごと
+    (``random_color("Start", r=.., g=.., ...)``) のどれでもよく、呼び出し側が作った形が
+    そのまま使われる。実サンプルでは、この ``Easing`` がどのブロックの下にあるか
+    (Location/Scaling/Rotation か、Scaling の ``SingleEasing`` か、Model/Track の
+    チャンネルごとの色イージングか) によって 3 つすべてが使われている。
+    ``start_speed``/``end_speed`` は Effekseer の ``EasingStart``/``EasingEnd``
+    列挙値で、自由な浮動小数ではない: 正しいのは ``-30,-20,-10,0,10,20,30`` のみ
+    (:data:`enums.EASING_SPEEDS` 参照)。Effekseer のエディタがそれ以外で落ちるので、
+    ここで ``ValueError`` を投げる。
     """
     e = Elem(tag)
     if start is not None:
@@ -164,12 +162,12 @@ def color(tag: str, r=None, g=None, b=None, a=None) -> Elem:
 
 def random_color(tag: str, *, r=None, g=None, b=None, a=None,
                   drawn_as: int | None = None, color_space: int | None = None) -> Elem:
-    """A per-channel PVA color block, e.g. ``random_color("ColorAll_Random",
+    """チャンネルごとの PVA 色ブロック。例: ``random_color("ColorAll_Random",
     r={"center": 0, "max": 255, "min": 0}, a={"center": 255, "max": 255,
-    "min": 255})`` -> ``<ColorAll_Random><R>...</R><A>...</A></ColorAll_Random>``.
-    Each channel is a flat ``{"center":..,"max":..,"min":..}`` dict. The
-    block-level ``drawn_as``/``color_space`` siblings (after ``R``/``G``/
-    ``B``/``A``) are real but rarely touched (all real samples use `1`/`0`).
+    "min": 255})`` -> ``<ColorAll_Random><R>...</R><A>...</A></ColorAll_Random>``。
+    各チャンネルは平坦な ``{"center":..,"max":..,"min":..}`` の dict。
+    ブロックレベルの ``drawn_as``/``color_space`` 兄弟 (``R``/``G``/``B``/``A`` の後) は
+    実在するがほとんど触られない (実サンプルはすべて `1`/`0`)。
     """
     e = Elem(tag)
     for name, spec in (("R", r), ("G", g), ("B", b), ("A", a)):
@@ -188,12 +186,11 @@ def xyz(tag: str, x=None, y=None, z=None) -> Elem:
 
 def axis_pva(*, axis: Elem, rotation: dict | None = None, velocity: dict | None = None,
              acceleration: dict | None = None) -> Elem:
-    """``AxisPVA`` (``RotationValues`` Type=3): ``axis`` is a per-axis PVA
-    ``Elem`` naming the spin-axis direction (e.g. ``xyz("Axis",
-    x=pva("X", center=0, max=0, min=0), z=pva("Z", center=1, max=1, min=1))``
-    for a Z-axis spin); ``rotation``/``velocity``/``acceleration`` are flat
-    ``{"center":..,"max":..,"min":..}`` dicts for the scalar angle/spin-speed
-    around that axis.
+    """``AxisPVA`` (``RotationValues`` Type=3): ``axis`` は回転軸の方向を表す
+    軸ごとの PVA の ``Elem`` (例: Z 軸回転なら ``xyz("Axis",
+    x=pva("X", center=0, max=0, min=0), z=pva("Z", center=1, max=1, min=1))``)。
+    ``rotation``/``velocity``/``acceleration`` はその軸まわりのスカラーの角度/回転速度を
+    表す平坦な ``{"center":..,"max":..,"min":..}`` の dict。
     """
     e = Elem("AxisPVA")
     e.children.append(axis if axis.tag == "Axis" else Elem("Axis", children=axis.children))
@@ -208,13 +205,12 @@ def axis_pva(*, axis: Elem, rotation: dict | None = None, velocity: dict | None 
 
 def axis_easing(*, axis: Elem, start: dict | None = None, end: dict | None = None,
                  start_speed=None, end_speed=None) -> Elem:
-    """``AxisEasing`` (``RotationValues`` Type=4) - structurally inferred by
-    analogy with :func:`axis_pva`/:func:`easing` (an axis direction plus an
-    eased scalar angle); no sample in the 310-file corpus had this variant
-    actively selected (always cached-inert behind ``RotationValues.Type=3``
-    in the files that carry it), so treat this as unverified until a real
-    active example turns up. ``start``/``end`` are flat ``{"center":..,
-    "max":..,"min":..}`` dicts.
+    """``AxisEasing`` (``RotationValues`` Type=4) - :func:`axis_pva`/:func:`easing` から
+    類推した構造 (軸方向 + イージングするスカラー角度)。310 ファイルのコーパスには
+    この変種を実際に選択しているサンプルが無かった (持っているファイルでは常に
+    ``RotationValues.Type=3`` の裏に残った無効なキャッシュ) ので、実際に有効な例が
+    見つかるまでは未検証として扱うこと。``start``/``end`` は平坦な ``{"center":..,
+    "max":..,"min":..}`` の dict。
     """
     e = Elem("AxisEasing")
     e.children.append(axis if axis.tag == "Axis" else Elem("Axis", children=axis.children))
@@ -230,7 +226,7 @@ def axis_easing(*, axis: Elem, start: dict | None = None, end: dict | None = Non
 
 
 # ---------------------------------------------------------------------------
-# common Node child-block builders
+# Node 共通の子ブロックのビルダー
 COMMON_LAYOUTS = ("legacy", "v180")
 
 
@@ -246,25 +242,25 @@ def common_values(*, layout: str, max_generation=None, infinite: bool | None = N
                    trigger_to_remove: int | None = None,
                    generation_timing: int | None = None, trigger: int | None = None,
                    trigger_count=None) -> Elem:
-    """``CommonValues``. ``location_effect_type``/``rotation_effect_type``/
-    ``scale_effect_type`` are the parent-transform-inheritance flags for
-    child nodes (0/1/2, real corpus mode is 1).
+    """``CommonValues``。``location_effect_type``/``rotation_effect_type``/
+    ``scale_effect_type`` は子ノードへの親トランスフォーム継承フラグ
+    (0/1/2、実コーパスの最頻値は 1)。
 
-    ``layout`` must match the target file's ``ToolVersion`` (see
-    ``versions.layout_of``), because Effekseer picks the layout from it:
+    Effekseer はファイルの ``ToolVersion`` からレイアウトを選ぶので、``layout`` は
+    対象ファイルの ``ToolVersion`` に合わせること (``versions.layout_of`` 参照):
 
-    * ``"legacy"`` (ToolVersion < 1.80β2): ``RemoveWhen*``, ``GenerationTime``/
-      ``GenerationTimeOffset`` and ``TriggerParam`` are direct children; order
-      matches a real verbose sample (``NextSoft01/MagicFire1.efkproj``) and
-      the 1.7.3 editor's own output. 1.80 migrates these on load.
-    * ``"v180"``: the same values live in ``<Generation>``/``<Removal>``
-      (1.80.7 ``Data/CommonValues.cs``, order as the 1.80.7 editor writes it),
-      which also carry the 1.80-only ``generation_timing`` (0=Continuous,
-      1=Trigger), ``trigger`` and ``trigger_count``.
+    * ``"legacy"`` (ToolVersion < 1.80β2): ``RemoveWhen*``、``GenerationTime``/
+      ``GenerationTimeOffset``、``TriggerParam`` が直接の子。順序は冗長な実サンプル
+      (``NextSoft01/MagicFire1.efkproj``) と 1.7.3 エディタ自身の出力に一致する。
+      1.80 は読み込み時にこれらをマイグレーションする。
+    * ``"v180"``: 同じ値が ``<Generation>``/``<Removal>`` の中にある
+      (1.80.7 ``Data/CommonValues.cs``、順序は 1.80.7 エディタが書くとおり)。
+      こちらは 1.80 専用の ``generation_timing`` (0=Continuous、1=Trigger)、
+      ``trigger``、``trigger_count`` も持つ。
 
-    ``trigger_*`` are Effekseer ``TriggerType`` values: 0=None,
-    1/257/513/769=Trigger0-3, and (1.80 only) 2=ParentRemoved,
-    3=ParentCollided. PVA-shaped values are ``{"center":..,"max":..,"min":..}``.
+    ``trigger_*`` は Effekseer の ``TriggerType`` の値: 0=None、
+    1/257/513/769=Trigger0-3、(1.80 のみ) 2=ParentRemoved、
+    3=ParentCollided。PVA 形の値は ``{"center":..,"max":..,"min":..}``。
     """
     if layout not in COMMON_LAYOUTS:
         raise ValueError(f"layout={layout!r}; expected one of {COMMON_LAYOUTS}")
@@ -329,12 +325,12 @@ def common_values(*, layout: str, max_generation=None, infinite: bool | None = N
 
 def location_values(*, fixed_xyz: dict | None = None, velocity: Elem | None = None,
                      acceleration: Elem | None = None, easing: Elem | None = None) -> Elem:
-    """``LocationValues``. ``fixed_xyz`` is a plain ``{"X":.., "Y":.., "Z":..}``
-    dict for a ``Type=0``/``Fixed`` block; ``velocity``/``acceleration`` are
-    ``xyz("Velocity", ...)``/``xyz("Acceleration", ...)``-shaped ``Elem``s for
-    a ``Type=1``/``PVA`` block; ``easing`` is a ``Type=2`` per-axis
+    """``LocationValues``。``fixed_xyz`` は ``Type=0``/``Fixed`` ブロック用の素の
+    ``{"X":.., "Y":.., "Z":..}`` の dict。``velocity``/``acceleration`` は
+    ``Type=1``/``PVA`` ブロック用の ``xyz("Velocity", ...)``/``xyz("Acceleration", ...)``
+    形の ``Elem``。``easing`` は ``Type=2`` の軸ごとの
     ``easing("Easing", start=elem("Start", X=pva(...), ...), end=...)``
-    block.
+    ブロック。
     """
     e = Elem("LocationValues")
     if fixed_xyz is not None:
@@ -355,12 +351,12 @@ def location_values(*, fixed_xyz: dict | None = None, velocity: Elem | None = No
 
 
 def location_abs_values(*, gravity: dict | None = None, attractive_force=None) -> Elem:
-    """``LocationAbsValues`` (a ``Node``-level sibling of ``LocationValues``,
-    sitting after ``ScalingValues``/before ``GenerationLocationValues`` in
-    real files). ``gravity`` is a plain ``{"x":..,"y":..,"z":..}`` dict
-    (Type=1, real shape doubles the tag: ``<Gravity><Gravity><X>...``);
-    ``attractive_force`` is a plain scalar pull-strength (Type=2). Real
-    example: ``AndrewFM01/blue_laser.efkproj``.
+    """``LocationAbsValues`` (``LocationValues`` と同じ ``Node`` レベルの兄弟で、
+    実ファイルでは ``ScalingValues`` の後/``GenerationLocationValues`` の前にある)。
+    ``gravity`` は素の ``{"x":..,"y":..,"z":..}`` の dict (Type=1。実際の形では
+    タグが二重になる: ``<Gravity><Gravity><X>...``)。``attractive_force`` は
+    素のスカラーの引力の強さ (Type=2)。実例:
+    ``AndrewFM01/blue_laser.efkproj``。
     """
     e = Elem("LocationAbsValues")
     if gravity is not None:
@@ -375,15 +371,14 @@ def location_abs_values(*, gravity: dict | None = None, attractive_force=None) -
 def rotation_values(*, fixed: Elem | None = None, velocity: Elem | None = None,
                      acceleration: Elem | None = None, easing: Elem | None = None,
                      axis_pva: Elem | None = None, axis_easing: Elem | None = None) -> Elem:
-    """``RotationValues``. ``fixed`` is ``xyz("Rotation", ...)``-shaped for a
-    ``Type=0``/``Fixed`` block; ``velocity``/``acceleration`` are
-    ``xyz("Rotation", X=pva(...), ...)``-style (each axis itself a PVA) for a
-    ``Type=1``/``PVA`` block; ``easing`` is a ``Type=2`` per-axis
-    ``easing("Easing", ...)`` block (same shape as ``location_values``'s).
-    ``axis_pva``/``axis_easing`` (Type=3/4, see :func:`axis_pva`/
-    :func:`axis_easing`) are **not** "single scalar applied to all axes" like
-    ``ScalingValues``'s Type=3/4 - they define a spin axis plus the angle
-    around it.
+    """``RotationValues``。``fixed`` は ``Type=0``/``Fixed`` ブロック用の
+    ``xyz("Rotation", ...)`` 形。``velocity``/``acceleration`` は ``Type=1``/``PVA``
+    ブロック用の ``xyz("Rotation", X=pva(...), ...)`` 形 (各軸自体が PVA)。
+    ``easing`` は ``Type=2`` の軸ごとの ``easing("Easing", ...)`` ブロック
+    (``location_values`` のものと同じ形)。
+    ``axis_pva``/``axis_easing`` (Type=3/4、:func:`axis_pva`/:func:`axis_easing`
+    参照) は ``ScalingValues`` の Type=3/4 のような「全軸に同じスカラー」では
+    **ない** - 回転軸とその軸まわりの角度を定義する。
     """
     e = Elem("RotationValues")
     if fixed is not None:
@@ -412,15 +407,15 @@ def rotation_values(*, fixed: Elem | None = None, velocity: Elem | None = None,
 def scaling_values(*, fixed: Elem | None = None, pva_scale: Elem | None = None,
                     easing: Elem | None = None, single_pva: dict | None = None,
                     single_easing: Elem | None = None) -> Elem:
-    """``ScalingValues``. ``fixed`` is ``xyz("Scale", ...)``-shaped for a
-    ``Type=0``/``Fixed`` block; ``pva_scale`` is a ``pva("Scale", x={...},
-    y={...}, drawn_as=0)``-shaped ``Elem`` for a ``Type=1``/``PVA`` block;
-    ``easing`` is a ``Type=2`` per-axis ``easing("Easing", ...)`` block;
-    ``single_pva`` is a flat ``{"center":..,"max":..,"min":..}`` dict
-    (Type=3, applied uniformly to all axes); ``single_easing`` is a
-    ``Type=4`` flat-scalar ``easing("SingleEasing", start=pva("Start",
-    center=..,...), end=pva("End", ...), start_speed=.., end_speed=..)``
-    block (note: flat ``Start``/``End``, unlike ``easing``'s per-axis ones).
+    """``ScalingValues``。``fixed`` は ``Type=0``/``Fixed`` ブロック用の
+    ``xyz("Scale", ...)`` 形。``pva_scale`` は ``Type=1``/``PVA`` ブロック用の
+    ``pva("Scale", x={...}, y={...}, drawn_as=0)`` 形の ``Elem``。
+    ``easing`` は ``Type=2`` の軸ごとの ``easing("Easing", ...)`` ブロック。
+    ``single_pva`` は平坦な ``{"center":..,"max":..,"min":..}`` の dict
+    (Type=3、全軸に一様に適用)。``single_easing`` は ``Type=4`` の平坦なスカラーの
+    ``easing("SingleEasing", start=pva("Start", center=..,...), end=pva("End", ...),
+    start_speed=.., end_speed=..)`` ブロック (注: ``easing`` の軸ごとのものと違い、
+    ``Start``/``End`` は平坦)。
     """
     e = Elem("ScalingValues")
     if fixed is not None:
@@ -443,10 +438,10 @@ def scaling_values(*, fixed: Elem | None = None, pva_scale: Elem | None = None,
 
 
 def generation_location_point(*, location: dict | None = None) -> Elem:
-    """``GenerationLocationValues`` Type=0/``Point`` - the most common shape
-    in the corpus (746/310-file tally) yet previously entirely unbuilt.
-    ``location`` is a ``pva("Location", x={...}, y={...}, z={...})``-style
-    per-axis dict, i.e. ``{"x": {"center":..,"max":..,"min":..}, "y": ...}``.
+    """``GenerationLocationValues`` Type=0/``Point`` - コーパスで最も多い形
+    (310 ファイル中 746 件) なのに、以前はまったく作れなかった。
+    ``location`` は ``pva("Location", x={...}, y={...}, z={...})`` 形式の軸ごとの
+    dict、つまり ``{"x": {"center":..,"max":..,"min":..}, "y": ...}``。
     """
     e = Elem("GenerationLocationValues")
     e.children.append(Elem("Type", text="0"))
@@ -460,9 +455,9 @@ def generation_location_point(*, location: dict | None = None) -> Elem:
 def generation_location_circle(*, division=None, circle_type: int | None = None,
                                 angle_start=None, angle_end=None, radius=None,
                                 effects_rotation: bool = True) -> Elem:
-    """``GenerationLocationValues`` Type=3/``Circle``. ``circle_type`` is the
-    nested division-mode submode (0/1/2, default 0 in real samples) - not to
-    be confused with the outer ``Type`` selector.
+    """``GenerationLocationValues`` Type=3/``Circle``。``circle_type`` は入れ子の
+    分割モードのサブモード (0/1/2、実サンプルの既定値は 0) - 外側の ``Type``
+    セレクタと混同しないこと。
     """
     e = Elem("GenerationLocationValues")
     e.children.append(Elem("EffectsRotation", text=_fmt(effects_rotation)))
@@ -506,16 +501,15 @@ def renderer_common(*, color_texture: str | None = None,
                      uv_fixed: dict | None = None, uv_animation: dict | None = None,
                      uv_scroll: dict | None = None,
                      distortion: bool | None = None, distortion_intensity=None) -> Elem:
-    """``RendererCommonValues``. ``fade_in``/``fade_out`` are ``{"frame":..,
-    "start_speed":..,"end_speed":..}`` (only ``frame`` required; the speeds are
-    Effekseer ``EasingStart``/``EasingEnd`` enums - only ``-30,-20,-10,0,10,20,
-    30`` are legal, see :data:`enums.EASING_SPEEDS` - not free floats, and an
-    out-of-range value is rejected here because it crashes the Effekseer
-    editor while compiling fine). ``uv_fixed``
-    is ``{"start":{"x":..,"y":..}, "size":{"x":..,"y":..}}``; ``uv_animation``
-    additionally takes ``frame_length``/``frame_count_x``/``frame_count_y``/
-    ``loop_type``; ``uv_scroll`` replaces ``size`` with a ``speed`` dict. Pass
-    at most one ``uv_*`` - each also drives the ``UV`` selector (1/2/3).
+    """``RendererCommonValues``。``fade_in``/``fade_out`` は ``{"frame":..,
+    "start_speed":..,"end_speed":..}`` (必須は ``frame`` のみ。速度は Effekseer の
+    ``EasingStart``/``EasingEnd`` 列挙値で、正しいのは ``-30,-20,-10,0,10,20,
+    30`` のみ - :data:`enums.EASING_SPEEDS` 参照 - 自由な浮動小数ではない。範囲外の
+    値はコンパイルは通るのに Effekseer エディタを落とすので、ここで拒否する)。
+    ``uv_fixed`` は ``{"start":{"x":..,"y":..}, "size":{"x":..,"y":..}}``。
+    ``uv_animation`` はさらに ``frame_length``/``frame_count_x``/``frame_count_y``/
+    ``loop_type`` を取る。``uv_scroll`` は ``size`` の代わりに ``speed`` の dict を取る。
+    ``uv_*`` は多くても 1 つだけ渡すこと - どれも ``UV`` セレクタ (1/2/3) も決める。
     """
     e = Elem("RendererCommonValues")
     if color_texture is not None:
@@ -574,15 +568,14 @@ def renderer_common(*, color_texture: str | None = None,
 
 
 # ---------------------------------------------------------------------------
-# DrawingValues kind builders
+# DrawingValues の種別ごとのビルダー
 def _append_color_mode(e: Elem, prefix: str, fixed: Elem | None,
                         random_: Elem | None, easing_: Elem | None) -> None:
-    """Append a ``<prefix>_Fixed``/``_Random``/``_Easing`` triad (used for
-    both Sprite/Ribbon's ``ColorAll`` and Ring's ``OuterColor``/
-    ``CenterColor``/``InnerColor``). The ``<prefix>N</prefix>`` mode selector
-    is only written for Random(1)/Easing(2) - Fixed(0) needs none, matching
-    every real sparse file (``color_all`` alone has never carried an
-    explicit selector in the corpus).
+    """``<prefix>_Fixed``/``_Random``/``_Easing`` の 3 つ組を追加する (Sprite/Ribbon の
+    ``ColorAll`` と、Ring の ``OuterColor``/``CenterColor``/``InnerColor`` の両方で
+    使う)。``<prefix>N</prefix>`` のモードセレクタは Random(1)/Easing(2) のときだけ
+    書く - Fixed(0) には不要で、実際の疎なファイルすべてと一致する
+    (コーパスでは ``color_all`` 単独で明示的なセレクタを持っていたことは一度も無い)。
     """
     if easing_ is not None:
         e.children.append(Elem(prefix, text="2"))
@@ -603,13 +596,12 @@ def sprite(*, billboard: int | None = 0, color_all: Elem | None = None,
            color_all_random: Elem | None = None, color_all_easing: Elem | None = None,
            rendering_order: int | None = None,
            position_corners: dict | None = None, color_corners: dict | None = None) -> Elem:
-    # Effekseer's real BillboardType: 0=Billboard (always faces the camera -
-    # what almost every particle sprite wants), 1=YAxisFixed, 2=Fixed (no
-    # camera-facing correction at all - renders as a static oriented plane,
-    # e.g. a ground-flat shockwave ring), 3=RotatedBillboard. Defaulting this
-    # to 2 previously (copied from the one real sample on hand that happened
-    # to use it, a ground decal) made ordinary puff/spark sprites render as a
-    # flat static card instead of a camera-facing cloud.
+    # Effekseer の実際の BillboardType: 0=Billboard (常にカメラを向く - ほぼすべての
+    # パーティクルスプライトが求めるもの)、1=YAxisFixed、2=Fixed (カメラ向きの補正を
+    # 一切しない - 向きの固定された静的な平面として描かれる。例: 地面に平らな衝撃波の
+    # リング)、3=RotatedBillboard。以前はこれを 2 を既定にしていた (手元の実サンプルで
+    # たまたまそれを使っていた地面デカール 1 つから写した) ため、普通の煙/火花の
+    # スプライトがカメラを向く雲ではなく平らな静的カードとして描かれていた。
     e = Elem("Sprite")
     if rendering_order is not None:
         e.children.append(Elem("RenderingOrder", text=_fmt(rendering_order)))
@@ -641,10 +633,10 @@ def ring(*, vertex_count: int = 36, outer: Elem | None = None, inner: Elem | Non
           center_color_easing: Elem | None = None,
           inner_color: Elem | None = None, inner_color_random: Elem | None = None,
           inner_color_easing: Elem | None = None) -> Elem:
-    """``Ring``. Each of ``outer``/``center``/``inner`` color has the same
-    Fixed/Random/Easing triad as Sprite/Ribbon's ``ColorAll`` (confirmed via
-    real ``<OuterColor>``/``<CenterColor>``/``<InnerColor>`` mode selectors,
-    each independently taking 0/1/2) - see :func:`_append_color_mode`.
+    """``Ring``。``outer``/``center``/``inner`` の各色は Sprite/Ribbon の ``ColorAll`` と
+    同じ Fixed/Random/Easing の 3 つ組を持つ (実際の ``<OuterColor>``/
+    ``<CenterColor>``/``<InnerColor>`` モードセレクタがそれぞれ独立に 0/1/2 を取る
+    ことで確認済み) - :func:`_append_color_mode` 参照。
     """
     e = Elem("Ring")
     e.children.append(Elem("VertexCount", text=_fmt(vertex_count)))
@@ -671,15 +663,14 @@ def ribbon(*, viewpoint_dependent: bool = True, color_all: Elem | None = None,
 def model(*, model_path: str, lighting: bool | None = None,
           normal_texture: str | None = None,
           color_fixed: Elem | None = None, color_easing: Elem | None = None) -> Elem:
-    """``Model`` ``DrawingValues`` block (Type=5). ``model_path`` is a
-    relative path to a sibling ``.efkmodel`` asset (e.g. ``"Model/foo.efkmodel"``
-    - resolved by the Effekseer CUI at compile time the same way
-    ``RendererCommonValues.ColorTexture`` is, no special toolkit handling
-    needed). ``color_easing`` is a per-channel ``easing("Color_Easing",
-    start=random_color("Start", r={...}, ...), end=random_color("End", ...),
-    start_speed=.., end_speed=..)`` block; when given, a ``Color`` selector
-    (=2) is emitted alongside ``color_fixed`` (matches real verbose files -
-    ``color_fixed`` alone needs no selector).
+    """``Model`` の ``DrawingValues`` ブロック (Type=5)。``model_path`` は隣にある
+    ``.efkmodel`` アセットへの相対パス (例: ``"Model/foo.efkmodel"``
+    - Effekseer CUI がコンパイル時に ``RendererCommonValues.ColorTexture`` と同じ
+    方法で解決するので、ツールキット側の特別な処理は不要)。``color_easing`` は
+    チャンネルごとの ``easing("Color_Easing", start=random_color("Start", r={...}, ...),
+    end=random_color("End", ...), start_speed=.., end_speed=..)`` ブロック。
+    指定すると ``color_fixed`` と並んで ``Color`` セレクタ (=2) を出力する (冗長な
+    実ファイルと一致 - ``color_fixed`` 単独ならセレクタは不要)。
     """
     e = Elem("Model")
     e.children.append(Elem("Model", text=model_path))
@@ -699,14 +690,14 @@ def model(*, model_path: str, lighting: bool | None = None,
 def track(*, color_left: Elem | None = None, color_left_middle: Elem | None = None,
           color_center: Elem | None = None, color_center_middle: Elem | None = None,
           color_right: Elem | None = None, color_right_middle: Elem | None = None) -> Elem:
-    """``Track`` ``DrawingValues`` block (Type=6): 6 color "rails", left to
-    right. Each param is a pre-built ``Elem`` tagged exactly as Effekseer
-    expects for that rail - ``color("ColorLeft_Fixed", r=.., g=.., b=..,
-    a=..)`` or ``easing("ColorLeft_Easing", start=random_color("Start",
-    ...), end=random_color("End", ...))`` (swap ``ColorLeft`` for
+    """``Track`` の ``DrawingValues`` ブロック (Type=6): 左から右へ 6 本の色の
+    「レール」。各パラメータは作成済みの ``Elem`` で、タグはそのレールについて
+    Effekseer が期待するとおり - ``color("ColorLeft_Fixed", r=.., g=.., b=..,
+    a=..)`` または ``easing("ColorLeft_Easing", start=random_color("Start",
+    ...), end=random_color("End", ...))`` (レールごとに ``ColorLeft`` を
     ``ColorLeftMiddle``/``ColorCenter``/``ColorCenterMiddle``/``ColorRight``/
-    ``ColorRightMiddle`` per rail). No separate geometry fields - a Track's
-    shape comes from the node's own motion history, not vertex data.
+    ``ColorRightMiddle`` に置き換える)。形状用のフィールドは別に無い - Track の
+    形は頂点データではなく、ノード自身の移動履歴から決まる。
     """
     e = Elem("Track")
     for block in (color_left, color_left_middle, color_center,
@@ -731,16 +722,15 @@ def drawing_values(kind: str, block: Elem) -> Elem:
 def sound_values(*, wave: str, volume: dict | None = None, pitch: dict | None = None,
                   pan_type: int | None = None, pan: dict | None = None,
                   distance=None, delay: dict | None = None) -> Elem:
-    """``SoundValues`` - a ``Node``-level sibling of ``DrawingValues``, *not*
-    a ``DrawingValues`` kind itself (Effekseer plays a node's sound
-    alongside whatever it draws, or with no drawing at all). ``volume``/
-    ``pitch``/``pan``/``delay`` are flat ``{"center":..,"max":..,"min":..}``
-    dicts; ``distance`` is a plain scalar. ``wave`` is a relative path to a
-    sibling ``.wav`` asset (resolved by the CUI at compile time, same as
-    ``ColorTexture``/``Model``'s asset paths - no special toolkit handling
-    needed). Real example: ``NextSoft01/MagicFire1.efkproj`` (one of only 2
-    files with this genuinely enabled across a 310-file corpus - most real
-    files carry an inert ``Type=0`` ``SoundValues`` instead).
+    """``SoundValues`` - ``DrawingValues`` と同じ ``Node`` レベルの兄弟で、
+    ``DrawingValues`` の種別 *ではない* (Effekseer はノードのサウンドを、描画する
+    ものと一緒に、または何も描画せずに再生する)。``volume``/``pitch``/``pan``/
+    ``delay`` は平坦な ``{"center":..,"max":..,"min":..}`` の dict。``distance`` は
+    素のスカラー。``wave`` は隣にある ``.wav`` アセットへの相対パス (``ColorTexture``/
+    ``Model`` のアセットパスと同じく CUI がコンパイル時に解決するので、ツールキット側の
+    特別な処理は不要)。実例: ``NextSoft01/MagicFire1.efkproj`` (310 ファイルの
+    コーパスでこれを本当に有効にしている 2 ファイルのうちの 1 つ - ほとんどの実ファイルは
+    代わりに無効な ``Type=0`` の ``SoundValues`` を持っている)。
     """
     sound = elem("Sound", Wave=wave)
     if volume is not None:
@@ -762,18 +752,18 @@ def sound_values(*, wave: str, volume: dict | None = None, pitch: dict | None = 
 
 
 # ---------------------------------------------------------------------------
-# Node / project assembly
+# Node / プロジェクトの組み立て
 def node(name: str = "Node", *, common: Elem | None = None, location: Elem | None = None,
          rotation: Elem | None = None, scaling: Elem | None = None,
          location_abs: Elem | None = None, generation_location: Elem | None = None,
          renderer_common: Elem | None = None, drawing: Elem | None = None,
          sound: Elem | None = None, is_rendered: bool | None = None,
          children: list[Elem] | None = None) -> Elem:
-    """Build a full ``<Node>`` ready to append to a parent's ``<Children>``.
-    Block order matches a real file byte-for-byte (verified against
-    ``NextSoft01/MagicFire1.efkproj``/``AndrewFM01/blue_laser.efkproj``):
-    Common, Location, Rotation, Scaling, LocationAbs, GenerationLocation,
-    RendererCommon, Drawing, Sound, then IsRendered/Name/Children.
+    """親の ``<Children>`` にそのまま追加できる完全な ``<Node>`` を作る。
+    ブロックの順序は実ファイルとバイト単位で一致する
+    (``NextSoft01/MagicFire1.efkproj``/``AndrewFM01/blue_laser.efkproj`` で確認):
+    Common、Location、Rotation、Scaling、LocationAbs、GenerationLocation、
+    RendererCommon、Drawing、Sound、その後 IsRendered/Name/Children。
     """
     n = Elem("Node")
     for block in (common, location, rotation, scaling, location_abs,
@@ -791,10 +781,10 @@ def node(name: str = "Node", *, common: Elem | None = None, location: Elem | Non
 
 
 def group_node(name: str = "Node", *, children: list[Elem] | None = None, **node_kwargs) -> Elem:
-    """A pure container node that draws nothing, just organizes children.
-    ``DrawingValues/Type`` is written as 0 (None) explicitly: a missing
-    ``Type`` - or a missing ``DrawingValues`` - is a *Sprite* in every
-    Effekseer 1.5x-1.80.x editor (verified with each family's CUI)."""
+    """何も描かず、子をまとめるだけの純粋なコンテナノード。
+    ``DrawingValues/Type`` は明示的に 0 (None) と書く: ``Type`` が無い - または
+    ``DrawingValues`` が無い - と、Effekseer 1.5x-1.80.x のどのエディタでも *Sprite*
+    になる (各ファミリーの CUI で確認)。"""
     if "drawing" in node_kwargs:
         raise ValueError("group_node() draws nothing; use node(drawing=...) for a drawing node")
     return node(name, children=children, drawing=elem("DrawingValues", Type=0), **node_kwargs)
@@ -828,15 +818,14 @@ def track_node(name: str = "Node", *, track_block: Elem, children: list[Elem] | 
 def new_project(*, start_frame: int = 0, end_frame: int = 60, is_loop: bool = True,
                  tool_version: str = "0.7CTP1", version: int = 3,
                  root_children: list[Elem] | None = None) -> Elem:
-    """Build a full ``<EffekseerProject>`` skeleton.
+    """完全な ``<EffekseerProject>`` の骨組みを作る。
 
-    Defaults (``tool_version``/``version``) match the real AndrewFM01 samples
-    this toolkit was built from. ``ToolVersion`` is not a placeholder: it
-    decides the ``CommonValues`` layout Effekseer reads (see
-    :func:`common_values`) and an editor refuses a newer one than itself, so
-    ``new-project`` passes the target version's
-    ``versions.Profile.new_project_tool_version`` (``"0.7CTP1"`` for 1.7,
-    loaded by every editor; ``"1.80"`` for 1.80).
+    既定値 (``tool_version``/``version``) はこのツールキットの元になった
+    AndrewFM01 の実サンプルに合わせてある。``ToolVersion`` は仮の値ではない:
+    Effekseer が読む ``CommonValues`` のレイアウトを決め (:func:`common_values`
+    参照)、エディタは自分より新しいものを拒否するので、``new-project`` は対象
+    バージョンの ``versions.Profile.new_project_tool_version`` を渡す
+    (1.7 では ``"0.7CTP1"``、どのエディタでも読める。1.80 では ``"1.80"``)。
     """
     root = Elem("Root")
     root.children.append(Elem("Name", text="Root"))

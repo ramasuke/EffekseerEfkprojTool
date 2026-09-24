@@ -1,18 +1,17 @@
-"""``.efkproj`` XML codec - byte-exact round trip, stdlib only.
+"""``.efkproj`` の XML コーデック - バイト単位で往復一致、標準ライブラリのみ。
 
-File convention (verified against 14 real, hand-authored samples with ``xxd``):
-UTF-8 **with BOM**, **CRLF** line endings, ``<?xml version="1.0"
-encoding="utf-8"?>`` declaration, 2-space indent, zero attributes anywhere,
-empty containers self-close as ``<Children />``, no trailing newline after
-``</EffekseerProject>``.
+ファイルの規則 (手作業で作られた実サンプル 14 個に対して ``xxd`` で確認):
+UTF-8 **BOM 付き**、**CRLF** 改行、``<?xml version="1.0"
+encoding="utf-8"?>`` 宣言、2 スペースのインデント、属性は一切無し、
+空のコンテナは ``<Children />`` と自己終了、``</EffekseerProject>`` の後に
+末尾改行無し。
 
-Parsing discards all original whitespace/formatting (expat normalizes
-CRLF->LF in character data per the XML spec anyway, and inter-tag indentation
-whitespace is not meaningful content in this format - every element is either
-a pure text leaf or a pure container, never mixed). The writer regenerates
-canonical formatting from scratch. ``serialize(parse(text)) == text`` holds
-for any file Effekseer's own editor produced, which is the round-trip
-fidelity this module exists to guarantee (see ``tools/effect/selftest.py``).
+解析では元の空白/書式をすべて捨てる (どのみち expat は XML 仕様どおり文字データ中の
+CRLF を LF に正規化するし、この形式ではタグ間のインデント空白は意味のある内容で
+ない - 各要素は純粋なテキストリーフか純粋なコンテナのどちらかで、混在しない)。
+ライターは正規の書式を一から作り直す。Effekseer 自身のエディタが出力したファイルなら
+``serialize(parse(text)) == text`` が成り立ち、それがこのモジュールが保証するための
+往復の忠実性 (``tools/effect/selftest.py`` 参照)。
 """
 
 from __future__ import annotations
@@ -86,7 +85,7 @@ def _write_elem(e: Elem, depth: int, out: list[str]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# file helpers
+# ファイル用ヘルパー
 def read_text(path) -> str:
     raw = Path(path).read_bytes()
     if raw[:3] == _BOM:
@@ -107,7 +106,7 @@ def write(path, root: Elem) -> None:
 
 
 def self_check_roundtrip(path) -> None:
-    """Assert ``serialize(parse(text)) == text`` (formatting fidelity)."""
+    """``serialize(parse(text)) == text`` を確認する (書式の忠実性)。"""
     text = read_text(path)
     got = serialize(parse(text))
     if got != text:

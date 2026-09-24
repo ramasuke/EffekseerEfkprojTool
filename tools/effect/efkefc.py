@@ -1,18 +1,18 @@
-"""Reader for the compiled ``.efkefc`` container (stdlib only).
+"""コンパイル済み ``.efkefc`` コンテナのリーダー (標準ライブラリのみ)。
 
-Layout (Effekseer ``Dev/Editor/EffekseerCore/IO/EfkEfc.cs``, identical in
-1.7.3 and 1.80.x): ``b"EFKE"`` + ``int32 0``, then chunks of ``4-byte tag`` +
-``uint32 size`` + payload:
+レイアウト (Effekseer ``Dev/Editor/EffekseerCore/IO/EfkEfc.cs``。1.7.3 と
+1.80.x で同一): ``b"EFKE"`` + ``int32 0``、その後に ``4 バイトのタグ`` +
+``uint32 size`` + ペイロードのチャンクが続く:
 
-* ``INFO`` - ``int32 version`` + the asset list the runtime resolves relative
-  to the ``.efkefc`` (see :func:`asset_paths`).
-* ``EDIT`` - the editor's project XML, zlib-compressed in a key/value-table
-  encoding (see :func:`edit_project`). This is how the editor stores the
-  ``.efkproj`` it compiled - after *its* version migrations, so it is the
-  ground truth for what that Effekseer version actually read.
-* ``BIN_`` - the runtime binary: ``b"SKFE"`` + ``int32 version``. A runtime
-  refuses any effect whose version is above its own ``SupportBinaryVersion``
-  (``Effekseer.Effect.cpp``).
+* ``INFO`` - ``int32 version`` + ランタイムが ``.efkefc`` からの相対で解決する
+  アセットリスト (:func:`asset_paths` 参照)。
+* ``EDIT`` - エディタのプロジェクト XML。キー/値テーブル方式でエンコードして
+  zlib 圧縮したもの (:func:`edit_project` 参照)。エディタはコンパイルした
+  ``.efkproj`` をこの形で保存する。*そのエディタの* バージョンマイグレーション後の
+  ものなので、その Effekseer バージョンが実際に何を読んだかの正解になる。
+* ``BIN_`` - ランタイム用バイナリ: ``b"SKFE"`` + ``int32 version``。ランタイムは
+  自身の ``SupportBinaryVersion`` より新しいバージョンのエフェクトを拒否する
+  (``Effekseer.Effect.cpp``)。
 """
 
 from __future__ import annotations
@@ -25,8 +25,8 @@ from pathlib import Path
 from . import assets
 from .model import Elem
 
-# Last ExporterVersion whose INFO chunk still holds plain string lists
-# (Binary/Exporter.cs Ver1600); every later one writes a typed dependency list.
+# INFO チャンクがまだ素の文字列リストだった最後の ExporterVersion
+# (Binary/Exporter.cs Ver1600)。それ以降はすべて型付きの依存リストを書く。
 _INFO_STRING_LISTS_MAX_VERSION = 1610
 _ASSET_EXT_RE = re.compile(r"[^\x00]+?\.(?:" + "|".join(assets.ASSET_EXTS) + ")", re.IGNORECASE)
 
@@ -36,7 +36,7 @@ class EfkefcError(ValueError):
 
 
 def read_chunks(data: bytes) -> dict[str, bytes]:
-    """``{tag: payload}`` for every chunk (first occurrence wins)."""
+    """全チャンクの ``{tag: payload}`` (同じタグは最初のものを採用)。"""
     if data[:4] != b"EFKE" or len(data) < 8:
         raise EfkefcError("not a .efkefc (no EFKE header)")
     chunks: dict[str, bytes] = {}
@@ -67,7 +67,7 @@ def info_version(data: bytes) -> int:
 
 
 def bin_version(data: bytes) -> int:
-    """The runtime binary version (``BIN_`` chunk's ``SKFE`` header)."""
+    """ランタイム用バイナリのバージョン (``BIN_`` チャンクの ``SKFE`` ヘッダ)。"""
     body = _chunk(data, "BIN_")
     if body[:4] != b"SKFE" or len(body) < 8:
         raise EfkefcError("BIN_ chunk has no SKFE header")
@@ -83,14 +83,14 @@ def _read_utf16(chunk: bytes, off: int) -> tuple[str, int]:
 
 
 def parse_asset_paths(data: bytes) -> list[str]:
-    """Every asset path (textures, models, sounds, materials, curves) in the
-    ``INFO`` chunk, in chunk order; raises :class:`EfkefcError` when the chunk
-    doesn't parse cleanly to its end.
+    """``INFO`` チャンク内の全アセットパス (テクスチャ、モデル、サウンド、マテリアル、
+    カーブ) をチャンク内の順で返す。チャンクが末尾まできれいに解析できなければ
+    :class:`EfkefcError` を投げる。
 
-    Up to version 1610 the chunk is string lists (``int32 count`` + strings);
-    later versions (1.7.x = 1710, 1.80.x = 1810) write one dependency list
-    (``int32 count`` + ``int32 type``, ``int32 flags``, string). Strings are
-    ``int32 length`` + UTF-16LE chars incl. NUL.
+    バージョン 1610 まではチャンクが文字列リスト (``int32 count`` + 文字列) で、
+    それ以降 (1.7.x = 1710、1.80.x = 1810) は依存リストを 1 つ書く
+    (``int32 count`` + ``int32 type``、``int32 flags``、文字列)。文字列は
+    ``int32 length`` + NUL を含む UTF-16LE 文字。
     """
     chunk = _chunk(data, "INFO")
     if len(chunk) < 4:
@@ -114,7 +114,7 @@ def parse_asset_paths(data: bytes) -> list[str]:
             if not 0 <= count <= 4096:
                 raise ValueError("implausible dependency count")
             for _ in range(count):
-                off += 8  # file type, flags
+                off += 8  # ファイル種別、フラグ
                 s, off = _read_utf16(chunk, off)
                 paths.append(s)
             if off != len(chunk):
@@ -125,9 +125,9 @@ def parse_asset_paths(data: bytes) -> list[str]:
 
 
 def asset_paths(data: bytes) -> list[str]:
-    """:func:`parse_asset_paths`, falling back to scanning the INFO chunk's
-    UTF-16 text for asset-looking paths when it doesn't parse (so an
-    unfamiliar layout degrades to a best-effort list rather than an error)."""
+    """:func:`parse_asset_paths`。解析できなければ INFO チャンクの UTF-16 テキストから
+    アセットらしいパスを拾う方式にフォールバックする (見慣れないレイアウトでも
+    エラーにせず、できる範囲のリストに落とす)。"""
     try:
         return parse_asset_paths(data)
     except EfkefcError:
@@ -136,11 +136,11 @@ def asset_paths(data: bytes) -> list[str]:
 
 
 def edit_project(data: bytes) -> Elem:
-    """The ``<EffekseerProject>`` tree stored in the ``EDIT`` chunk
-    (``EfkEfcXml.Decompress``): zlib, then an int16 key table and an int16
-    value table (each ``int16 count`` + ``uint16 length``/UTF-8/``int16 id``),
-    then the element tree (``int16 count`` + per element ``int16 key``,
-    ``int32 has-value`` [+ ``int16 value``], ``int32 has-children`` [+ subtree]).
+    """``EDIT`` チャンクに保存された ``<EffekseerProject>`` ツリー
+    (``EfkEfcXml.Decompress``): zlib 展開、次に int16 のキーテーブルと int16 の
+    値テーブル (それぞれ ``int16 count`` + ``uint16 length``/UTF-8/``int16 id``)、
+    その後に要素ツリー (``int16 count`` + 要素ごとに ``int16 key``、
+    ``int32 has-value`` [+ ``int16 value``]、``int32 has-children`` [+ サブツリー])。
     """
     try:
         raw = zlib.decompress(_chunk(data, "EDIT"))

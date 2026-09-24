@@ -1,10 +1,10 @@
-"""tools.common - format-generic primitives shared by tools.bt and tools.scene.
+"""tools.common - tools.bt と tools.scene が共有する形式非依存のプリミティブ。
 
-Stdlib-only. Byte-exact cereal-JSON codec, the tagged-blob representation for
-losslessly round-tripping unmodeled cereal sub-trees, structural diff helpers,
-the NanamiEngine.vcxproj text-splice editor, and the generic ".meta" sidecar
-codec. Nothing here knows about BehaviourTree actions or Scene/GameObject/
-Component shapes - those live in the consuming packages.
+標準ライブラリのみ。バイト単位で正確な cereal-JSON コーデック、モデル化されていない
+cereal サブツリーを無損失でラウンドトリップするためのタグ付き blob 表現、構造差分
+ヘルパー、EnviroHunter.vcxproj のテキスト差し込みエディタ、汎用の ".meta"
+サイドカーコーデック。BehaviourTree の action や Scene/GameObject/Component の
+形については何も知らない - それらは利用側のパッケージにある。
 """
 
 __version__ = "0.1.0"
